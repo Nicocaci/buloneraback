@@ -57,7 +57,7 @@ class UserController {
                 sameSite: 'none',
                 maxAge: 24 * 60 * 60 * 1000,
                 path: '/',
-                //domain: '.railway.app'
+                domain: '.railway.app'
             });
             return res.status(201).json({
                 message: "Login con exito",
@@ -73,7 +73,7 @@ class UserController {
             secure: true,
             sameSite: 'none',
             path: "/",
-            //domain: 'railway.app'
+            domain: 'railway.app'
         });
         res.status(200).json({ message: "Logout Exitoso" })
     }
