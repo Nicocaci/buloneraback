@@ -4,9 +4,10 @@
   "description": "e-commerce",
   "main": "app.js",
   "type": "module",
-  "scripts": {
-    "dev": "node --watch src/app.js"
-  },
+"scripts": {
+  "dev": "node --watch src/app.js",
+  "start": "node src/app.js"
+},
   "author": "Nicolas Caci",
   "license": "ISC",
   "dependencies": {
