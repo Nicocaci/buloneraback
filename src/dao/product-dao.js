@@ -1,169 +1,170 @@
 import ProductModel from "./models/product-model.js";
 
 class ProductDao {
-    async createProduct(data) {
-        try {
-            // Verificar si ya existe un producto con el mismo SKU
-            const existingProduct = await ProductModel.findOne({ sku: data.sku });
-            if (existingProduct) {
-                throw new Error(`Ya existe un producto con el SKU: ${data.sku}`);
-            }
+  async createProduct(data) {
+    try {
+      const existingProduct = await ProductModel.findOne({ sku: data.sku });
+      if (existingProduct) {
+        throw new Error(`Ya existe un producto con el SKU: ${data.sku}`);
+      }
 
-            const newProduct = await ProductModel.create(data);
-            return newProduct;
-        } catch (error) {
-            // Si es un error de MongoDB por duplicado (código 11000)
-            if (error.code === 11000 || error.code === 11001) {
-                throw new Error(`Ya existe un producto con el SKU: ${data.sku}`);
-            }
-            throw error;
-        }
+      return await ProductModel.create(data);
+    } catch (error) {
+      if (error.code === 11000) {
+        throw new Error(`Ya existe un producto con el SKU: ${data.sku}`);
+      }
+      throw error;
     }
-    async getProducts(page = 1, limit = 10, q = '') {
-        try {
-            const skip = (page - 1) * limit;
+  }
 
-            // Sanitizar y limitar la longitud de la búsqueda
-            const rawQ = String(q || '').trim().slice(0, 100);
-            // Escapar caracteres especiales para usar en regex
-            const escaped = rawQ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  async getProducts(filters) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        search,
+        category,
+        subcategory,
+        marca,
+        minPrice,
+        maxPrice,
+        sort,
+      } = filters;
 
-            const filter = escaped ? { item: { $regex: escaped, $options: 'i' } } : {};
+      const skip = (page - 1) * limit;
+      const query = {};
 
-            const products = await ProductModel.find(filter)
-                .skip(skip)
-                .limit(parseInt(limit, 10));
+      // 🔍 BÚSQUEDA GLOBAL
+      if (search) {
+        const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-            const total = await ProductModel.countDocuments(filter);
+        query.$or = [
+          { item: { $regex: escaped, $options: "i" } }, // ⚠️ usar el campo correcto
+          { categoria: { $regex: escaped, $options: "i" } },
+          { subcategoria: { $regex: escaped, $options: "i" } },
+          { marca: { $regex: escaped, $options: "i" } },
+        ];
+      }
 
-            return {
-                products,
-                pagination: {
-                    page: parseInt(page, 10),
-                    limit: parseInt(limit, 10),
-                    total,
-                    totalPages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            throw error;
-        }
-    }
+      // 📦 FILTROS
+      if (category) query.categoria = category;
+      if (subcategory) query.subcategoria = subcategory;
 
-    async getProductBySku(sku) {
-        try {
-            const escapeRegex = (text) => {
-                return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            };
-            const cleanSku = String(sku || '').trim();
+      if (marca) {
+        query.marca = { $regex: marca, $options: "i" };
+      }
 
-            if (!cleanSku) return null;
-            // Si tu SKU es consistente en DB, preferir exact match:
+      // 💰 PRECIO
+      if (minPrice || maxPrice) {
+        query.precio = {};
+        if (minPrice) query.precio.$gte = Number(minPrice);
+        if (maxPrice) query.precio.$lte = Number(maxPrice);
+      }
 
-            const product = await ProductModel.findOne({ sku: { $regex: `^${escapeRegex(cleanSku)}$`, $options: 'i' } }).lean();
-            return product;
-        } catch (error) {
-            throw error;
-        }
+      // 📊 ORDEN
+      let sortOption = {};
+      if (sort === "price_asc") sortOption.precio = 1;
+      if (sort === "price_desc") sortOption.precio = -1;
+
+      const [products, total] = await Promise.all([
+        ProductModel.find(query)
+          .sort(sortOption)
+          .skip(skip)
+          .limit(Number(limit))
+          .lean(), // 🔥 mejora performance
+        ProductModel.countDocuments(query),
+      ]);
+
+      return {
+        products,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        },
+      };
+    } catch (error) {
+      throw error;
     }
-    async getProductById(pid) {
-        try {
-            const product = await ProductModel.findById(pid);
-            return product;
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async getProductById(pid) {
+    try {
+      const product = await ProductModel.findById(pid).lean();
+      if (!product) throw new Error("Producto no encontrado");
+      return product;
+    } catch (error) {
+      throw error;
     }
-    async getProductByBrand(marca, page = 1, limit = 10) {
-        try {
-            const skip = (page - 1) * limit;
-            const products = await ProductModel.find({ marca })
-                .skip(skip)
-                .limit(parseInt(limit));
-            const total = await ProductModel.countDocuments({ marca });
-            return {
-                products,
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total,
-                    totalPages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async getProductBySku(sku) {
+    try {
+      const escaped = sku.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      return await ProductModel.findOne({
+        sku: { $regex: `^${escaped}$`, $options: "i" },
+      }).lean();
+    } catch (error) {
+      throw error;
     }
-    async getProductByCategory(categoria, page = 1, limit = 10) {
-        try {
-            const skip = (page - 1) * limit;
-            const products = await ProductModel.find({ categoria })
-                .skip(skip)
-                .limit(parseInt(limit));
-            const total = await ProductModel.countDocuments({ categoria });
-            return {
-                products,
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total,
-                    totalPages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async updateProduct(pid, data) {
+    try {
+      const updated = await ProductModel.findByIdAndUpdate(pid, data, {
+        new: true,
+      }).lean();
+
+      if (!updated) throw new Error("Producto no encontrado");
+
+      return updated;
+    } catch (error) {
+      throw error;
     }
-    async getProductBySubCategory(subcategoria, page = 1, limit = 10) {
-        try {
-            const skip = (page - 1) * limit;
-            const products = await ProductModel.find({ subcategoria })
-                .skip(skip)
-                .limit(parseInt(limit));
-            const total = await ProductModel.countDocuments({ subcategoria });
-            return {
-                products,
-                pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
-                    total,
-                    totalPages: Math.ceil(total / limit)
-                }
-            };
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async deleteProduct(pid) {
+    try {
+      const deleted = await ProductModel.findByIdAndDelete(pid);
+
+      if (!deleted) throw new Error("Producto no encontrado");
+
+      return deleted;
+    } catch (error) {
+      throw error;
     }
-    async updateProduct(pid, data) {
-        try {
-            const updateProduct = await ProductModel.findByIdAndUpdate(pid, data, { new: true });
-            if (!updateProduct) {
-                throw new Error('Producto no encontrado');
-            }
-            return updateProduct;
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async getSubCategories() {
+    try {
+      return await ProductModel.distinct("subcategoria");
+    } catch (error) {
+      throw error;
     }
-    async deleteProduct(pid) {
-        try {
-            const product = await ProductModel.findByIdAndDelete(pid);
-            if (!product) {
-                throw new Error('Producto no encontrado');
-            }
-            return product;
-        } catch (error) {
-            throw error;
-        }
+  }
+
+  async getDistinctSubcategoriesByCategory(categoria) {
+    try {
+      return await ProductModel.distinct("subcategoria", { categoria });
+    } catch (error) {
+      throw error;
     }
-    async getSubCategories() {
-        try {
-            const subcategories = await ProductModel.distinct('subcategoria');
-            return subcategories;
-        } catch (error) {
-            throw error;
-        }
+  }
+  async getSales(limit = 10) {
+    try {
+      const oferta = 
+        await ProductModel
+        .find({ oferta: true, estado: "activo" })
+        .limit(limit)
+        .sort({ precio: 1 })
+        .lean();
+      return oferta;
+    } catch (error) {
+      throw error;
     }
+  }
 }
 
 export default new ProductDao();

@@ -1,326 +1,354 @@
 import ProductService from "../service/product-service.js";
+import ProductModel from "../dao/models/product-model.js";
 import fs from "fs";
 import path from "path";
 import mongoose from "mongoose";
+import cloudinary from "../config/cloudinary.js";
 
 // Función auxiliar fuera de la clase para no depender de `this`
 const deleteImageFromDisk = (imageName) => {
-    const rutaCompleta = path.join("uploads", imageName);
-    if (fs.existsSync(rutaCompleta)) {
-        try {
-            fs.unlinkSync(rutaCompleta);
-        } catch (error) {
-            console.error("Error al borrar imagen:", rutaCompleta, error);
-        }
+  const rutaCompleta = path.join("uploads", imageName);
+  if (fs.existsSync(rutaCompleta)) {
+    try {
+      fs.unlinkSync(rutaCompleta);
+    } catch (error) {
+      console.error("Error al borrar imagen:", rutaCompleta, error);
     }
+  }
 };
 
 class ProductController {
+  async createProduct(req, res) {
+    try {
+      const {
+        sku,
+        item,
+        descripcion,
+        marca,
+        categoria,
+        subcategoria,
+        precio,
+        iva,
+        stock,
+        estado,
+        oferta,
+      } = req.body;
 
-    async createProduct(req, res) {
-        try {
-            const {
-                sku,
-                item,
-                descripcion,
-                marca,
-                categoria,
-                subcategoria,
-                precio,
-                iva,
-                stock,
-                estado
-            } = req.body;
+      // 🔹 Parseo de oferta (por si viene como string)
+      const ofertaParsed = oferta === "true" || oferta === true;
 
-            // 🔹 imágenes subidas con multer (array)
-            let imagenes = [];
+      // 🔹 Validaciones
+      if (!item || !descripcion || !categoria || !precio) {
+        return res.status(400).json({
+          message: "Faltan campos requeridos",
+        });
+      }
 
-            if (req.files && req.files.length > 0) {
-                imagenes = req.files.map(f => f.filename);
-            }
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          message: "Se requiere al menos una imagen",
+        });
+      }
 
-            // ❌ validaciones
-            if (!item || !descripcion || !categoria || !precio) {
-                return res.status(400).json({
-                    message: "Faltan campos requeridos",
-                });
-            }
+      // 🔹 Subida a Cloudinary (en paralelo)
+      const uploads = req.files.map((file) =>
+        cloudinary.uploader.upload(file.path, {
+          folder: "products",
+        }),
+      );
 
-            if (!imagenes || imagenes.length === 0) {
-                return res.status(400).json({
-                    message: "Se requiere al menos una imagen",
-                });
-            }
+      const results = await Promise.all(uploads);
 
-            const newProduct = await ProductService.createProduct({
-                sku,
-                item,
-                descripcion,
-                marca,
-                categoria,
-                subcategoria,
-                precio,
-                iva,
-                stock,
-                estado,
-                imagen: imagenes,  // 👉 coincide con el schema
-            });
+      const imagenes = results.map((r) => r.secure_url);
 
-            return res.status(201).json({
-                message: "Producto creado",
-                newProduct,
-            });
+      // 🔹 Borrar archivos locales
+      req.files.forEach((file) => {
+        fs.unlinkSync(file.path);
+      });
 
-        } catch (error) {
+      // 🔹 Crear producto
+      const newProduct = await ProductService.createProduct({
+        sku,
+        item,
+        descripcion,
+        marca,
+        categoria,
+        subcategoria,
+        precio,
+        iva,
+        stock,
+        estado,
+        oferta: ofertaParsed,
+        imagen: imagenes,
+      });
 
-            if (error.message?.includes("Código de producto duplicado")) {
-                return res.status(409).json({
-                    message: error.message,
-                });
-            }
+      return res.status(201).json({
+        message: "Producto creado",
+        newProduct,
+      });
+    } catch (error) {
+      if (error.message?.includes("Código de producto duplicado")) {
+        return res.status(409).json({
+          message: error.message,
+        });
+      }
 
-            return res.status(500).json({
-                message: "Error al crear producto",
-                error: error.message,
-            });
-        }
+      return res.status(500).json({
+        message: "Error al crear producto",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateProduct(req, res) {
+    const pid = req.params.pid;
+
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
     }
 
+    try {
+      const product = await ProductService.getProductById(pid);
 
-    async updateProduct(req, res) {
-        const pid = req.params.pid;
+      if (!product) {
+        return res.status(404).json({ message: "No existe el producto" });
+      }
 
-        if (!mongoose.Types.ObjectId.isValid(pid)) {
-            return res.status(400).json({ message: "ID inválido" });
+      const nuevasImagenes = req.files?.map((file) => file.path) || [];
+
+      const data = {
+        ...req.body,
+        precio: req.body.precio ? Number(req.body.precio) : undefined,
+        stock: req.body.stock ? Number(req.body.stock) : undefined,
+      };
+
+      // 🚫 nunca permitir imagen desde body
+      delete data.imagen;
+
+      if (nuevasImagenes.length > 0) {
+        if (Array.isArray(product.imagen)) {
+          product.imagen.forEach((img) => deleteImageFromDisk(img));
         }
+        data.imagen = nuevasImagenes;
+      }
 
-        const data = req.body;
+      const updatedProduct = await ProductService.updateProduct(pid, data);
 
-        try {
-            const product = await ProductService.getProductById(pid);
+      return res.status(200).json({
+        message: "Producto actualizado",
+        product: updatedProduct,
+      });
+    } catch (error) {
+      console.error("UPDATE ERROR:", error);
+      return res.status(500).json({
+        message: "Error al actualizar",
+        error: error.message,
+      });
+    }
+  }
 
-            if (!product) {
-                return res.status(404).json({ message: "No existe el producto" });
-            }
+  async deleteProduct(req, res) {
+    const pid = req.params.pid;
 
-            // Si subieron nuevas imágenes (puede ser 1 o varias)
-            const nuevasImagenes = req.files?.imagen?.map((file) => file.filename) || [];
-
-            if (nuevasImagenes.length > 0) {
-                // 1) Borrar de disco TODAS las imágenes anteriores
-                if (product.imagen && Array.isArray(product.imagen)) {
-                    product.imagen.forEach((img) => deleteImageFromDisk(img));
-                }
-
-                // 2) Reemplazar el array de imagen por solo las nuevas
-                data.imagen = nuevasImagenes;
-            }
-
-            const updatedProduct = await ProductService.updateProduct(pid, data);
-
-            return res.status(200).json({
-                message: "Producto actualizado",
-                product: updatedProduct
-            });
-
-        } catch (error) {
-            return res.status(500).json({
-                message: "Error al actualizar",
-                error: error.message
-            });
-        }
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
     }
 
-    async deleteProduct(req, res) {
-        const pid = req.params.pid;
+    try {
+      const product = await ProductService.getProductById(pid);
 
-        if (!mongoose.Types.ObjectId.isValid(pid)) {
-            return res.status(400).json({ message: "ID inválido" });
-        }
+      if (!product) {
+        return res.status(404).json({
+          message: "Producto no encontrado",
+        });
+      }
 
-        try {
-            const product = await ProductService.getProductById(pid);
+      // Borrar todas las imágenes del array (usamos la función auxiliar, no `this`)
+      if (product.imagen && Array.isArray(product.imagen)) {
+        product.imagen.forEach((img) => deleteImageFromDisk(img));
+      }
 
-            if (!product) {
-                return res.status(404).json({
-                    message: "Producto no encontrado"
-                });
-            }
+      await ProductService.deleteProduct(pid);
 
-            // Borrar todas las imágenes del array (usamos la función auxiliar, no `this`)
-            if (product.imagen && Array.isArray(product.imagen)) {
-                product.imagen.forEach((img) => deleteImageFromDisk(img));
-            }
+      return res.status(200).json({
+        message: "Producto eliminado",
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        message: "Error al eliminar producto",
+        error: error.message,
+      });
+    }
+  }
 
-            await ProductService.deleteProduct(pid);
+  async getProducts(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 6,
+        search,
+        category,
+        subcategory,
+        marca,
+        sort,
+      } = req.query;
 
-            return res.status(200).json({
-                message: "Producto eliminado"
-            });
+      const result = await ProductService.getProducts({
+        page: Number(page),
+        limit: Number(limit),
+        search,
+        category,
+        subcategory,
+        marca,
+        sort,
+      });
 
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                message: "Error al eliminar producto",
-                error: error.message
-            });
-        }
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener productos",
+        error: error.message,
+      });
+    }
+  }
+
+  async getProductBySku(req, res) {
+    const sku = (req.params.sku || "").trim();
+    if (!sku) return res.status(400).json({ message: "SKU requerido" });
+
+    try {
+      const product = await ProductService.getProductBySku(sku);
+      if (!product)
+        return res.status(404).json({ message: "Producto no encontrado" });
+      return res.status(200).json(product);
+    } catch (err) {
+      return res
+        .status(500)
+        .json({
+          message: "Error al obtener producto por SKU",
+          error: err.message,
+        });
+    }
+  }
+  async getProductById(req, res) {
+    const pid = req.params.pid;
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
     }
 
-    async getProducts(req, res) {
-        try {
-            const page = parseInt(req.query.page) || 1;
-            const limit = Math.min(parseInt(req.query.limit) || 10, 1000); // limite máximo razonable
-            const q = req.query.q?.trim() || '';
+    try {
+      const product = await ProductService.getProductById(pid);
+      if (!product) {
+        return res.status(404).json({ message: "Producto no encontrado" });
+      }
+      return res.status(200).json(product);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener el producto",
+        error: error.message,
+      });
+    }
+  }
 
-            if (page < 1 || limit < 1) {
-                return res.status(400).json({ message: "Los parámetros 'page' y 'limit' deben ser números positivos" });
-            }
+  async getProductByBrand(req, res) {
+    const brand = req.params.brand;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
 
-            // Pasamos q al service
-            const result = await ProductService.getProducts(page, limit, q);
-            return res.status(200).json(result);
-        } catch (error) {
-            return res.status(500).json({ message: "Error al obtener los productos", error: error.message });
-        }
+    if (!brand) {
+      return res.status(400).json({ message: "Marca requerida" });
     }
 
-    async getProductBySku(req, res) {
-        const sku = (req.params.sku || '').trim();
-        if (!sku) return res.status(400).json({ message: 'SKU requerido' });
-
-        try {
-            const product = await ProductService.getProductBySku(sku);
-            if (!product) return res.status(404).json({ message: 'Producto no encontrado' });
-            return res.status(200).json(product);
-        } catch (err) {
-            return res.status(500).json({ message: 'Error al obtener producto por SKU', error: err.message });
-        }
+    try {
+      const result = await ProductService.getProductByBrand(brand, page, limit);
+      if (!result.products.length) {
+        return res.status(404).json({
+          message: "No se encontró ningún producto con esa marca",
+        });
+      }
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener productos por marca",
+        error: error.message,
+      });
     }
-    async getProductById(req, res) {
-
-        const pid = req.params.pid;
-        if (!mongoose.Types.ObjectId.isValid(pid)) {
-            return res.status(400).json({ message: 'ID inválido' });
-        }
-
-
-        try {
-            const product = await ProductService.getProductById(pid);
-            if (!product) {
-                return res.status(404).json({ message: "Producto no encontrado" });
-            }
-            return res.status(200).json(product);
-        } catch (error) {
-            return res.status(500).json({
-                message: "Error al obtener el producto",
-                error: error.message
-            });
-        }
+  }
+  async getProductByCategory(req, res) {
+    try {
+      const categories = await ProductService.getDistinctCategories();
+      return res.status(200).json(categories);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener categorías",
+        error: error.message,
+      });
     }
+  }
+  async getProductBySubCategory(req, res) {
+    const subcategory = req.params.subcategory;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
 
-    async getProductByBrand(req, res) {
-        const brand = req.params.brand;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-
-        if (!brand) {
-            return res.status(400).json({ message: "Marca requerida" });
-        }
-
-
-        try {
-            const result = await ProductService.getProductByBrand(brand, page, limit);
-            if (!result.products.length) {
-                return res.status(404).json({
-                    message: 'No se encontró ningún producto con esa marca'
-                })
-            }
-            return res.status(200).json(result);
-        } catch (error) {
-            return res.status(500).json({
-                message: "Error al obtener productos por marca",
-                error: error.message
-            })
-        }
-
-    }
-    async getProductByCategory(req, res) {
-        const category = req.params.category;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-
-        if (!category) {
-            return res.status(400).json({ message: "Categoría requerida" });
-        }
-
-        // Validar que page y limit sean números positivos
-        if (page < 1 || limit < 1) {
-            return res.status(400).json({
-                message: "Los parámetros 'page' y 'limit' deben ser números positivos"
-            });
-        }
-
-        try {
-            const result = await ProductService.getProductByCategory(category, page, limit);
-            if (!result.products.length) {
-                return res.status(404).json({
-                    message: 'No se encontró ningún producto con esa categoría'
-                });
-            }
-            return res.status(200).json(result);
-        } catch (error) {
-            return res.status(500).json({
-                message: "Error al obtener productos por categoría",
-                error: error.message
-            });
-        }
-    }
-    async getProductBySubCategory(req, res) {
-        const subcategory = req.params.subcategory;
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
-
-        if (!subcategory) {
-            return res.status(400).json({ message: "Subcategoría requerida" });
-        }
-
-        // Validar que page y limit sean números positivos
-        if (page < 1 || limit < 1) {
-            return res.status(400).json({
-                message: "Los parámetros 'page' y 'limit' deben ser números positivos"
-            });
-        }
-
-        try {
-            const result = await ProductService.getProductBySubCategory(subcategory, page, limit);
-            if (!result.products.length) {
-                return res.status(404).json({
-                    message: 'No se encontró ningún producto con esa subcategoría'
-                });
-            }
-            return res.status(200).json(result);
-        } catch (error) {
-            return res.status(500).json({
-                message: "Error al obtener productos por subcategoría",
-                error: error.message
-            });
-        }
-    }
-    async getSubCategories(req, res) {
-        try {
-            // Si tenés ProductService, delegar acá:
-            const subcategorias = await ProductService.getSubCategories();
-            return res.status(200).json(subcategorias.sort());
-        } catch (error) {
-            console.error('Error al obtener subcategorías:', error);
-            return res.status(500).json({
-                message: 'Error al obtener subcategorías',
-                error: error.message
-            });
-        }
+    if (!subcategory) {
+      return res.status(400).json({ message: "Subcategoría requerida" });
     }
 
+    // Validar que page y limit sean números positivos
+    if (page < 1 || limit < 1) {
+      return res.status(400).json({
+        message: "Los parámetros 'page' y 'limit' deben ser números positivos",
+      });
+    }
+
+    try {
+      const result = await ProductService.getProductBySubCategory(
+        subcategory,
+        page,
+        limit,
+      );
+      if (!result.products.length) {
+        return res.status(404).json({
+          message: "No se encontró ningún producto con esa subcategoría",
+        });
+      }
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener productos por subcategoría",
+        error: error.message,
+      });
+    }
+  }
+  async getSubCategories(req, res) {
+    try {
+      const { category } = req.params;
+
+      const subcategories = await ProductModel.distinct("subcategoria", {
+        categoria: category,
+      });
+
+      return res.status(200).json(subcategories);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener subcategorías",
+        error: error.message,
+      });
+    }
+  }
+  async getSales(req, res) {
+    try {
+      const limit = parseInt(req.query.limit) || 10;
+      const sales = await ProductService.getSales(limit);
+      return res.status(200).json(sales);
+    } catch (error) {
+      return res.status(500).json({
+        message: "Error al obtener Productos en oferta",
+        error: error.message,
+      });
+    }
+  }
 }
 
 export default new ProductController();

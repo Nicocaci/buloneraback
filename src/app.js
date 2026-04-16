@@ -1,16 +1,6 @@
-import dotenv from "dotenv";
-import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-dotenv.config({ path: resolve(__dirname, "../.env") });
-
 import express from "express";
 import mongoose from "mongoose";
 import cors from "cors";
-import path from "path";
 
 import userRouter from "./router/user-router.js";
 import cartRouter from "./router/cart-router.js";
@@ -18,11 +8,24 @@ import productRouter from "./router/product-router.js";
 import orderRouter from "./router/order-router.js";
 import mercadoPagoRouter from "./router/mp-test-router.js";
 
+
+import dotenv from "dotenv";
+dotenv.config();
+
+
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+
 const app = express();
 const PORT = process.env.PORT || 8080;
 const allowedOrigins = [
     "http://localhost:5173",
-    "https://bulonerafront-production.up.railway.app",
+    "https://www.buloneraeltriangulo.com",
+    "https://buloneraeltriangulo.com"
 ];
 
 //Conexión DB
@@ -49,7 +52,7 @@ app.use(
         methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     })
 );
-app.use('/uploads', express.static('uploads'));
+app.use("/uploads", express.static("uploads"));
 app.use(express.static("./src/public"));
 
 

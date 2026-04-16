@@ -11,7 +11,8 @@ const productSchema = new mongoose.Schema({
     precio: { type: Number, required: true },
     iva: { type: Number, default: 0 },
     stock: { type: Number, required: true },
-    estado: { type: String, enum: ["activo", "inactivo"], default: "activo" }
+    estado: { type: String, enum: ["activo", "inactivo"], default: "activo" },
+    oferta: { type: Boolean, default: false }
 });
 
 const ProductModel = mongoose.model('products', productSchema);

@@ -4,29 +4,30 @@ import upload from "../config/multerConfig.js";
 
 const router = express.Router();
 
-router.post(
-    '/',
-    upload.array('imagen', 10),
-    ProductController.createProduct
-);
+// Crear producto
+router.post('/',upload.array('imagen', 10),ProductController.createProduct);
 
+// Obtener productos (CON TODOS LOS FILTROS)
 router.get('/', ProductController.getProducts);
 
-router.get('/brand/:brand', ProductController.getProductByBrand);
-router.get('/category/:category', ProductController.getProductByCategory);
-
-router.get('/subcategory/:subcategory', ProductController.getProductBySubCategory);
+// Subcategorías (esto sí tiene sentido mantenerlo)
 router.get('/subcategorias', ProductController.getSubCategories);
 
-router.get('/:pid', ProductController.getProductById);
+// Buscar por SKU
 router.get('/sku/:sku', ProductController.getProductBySku);
 
-router.put(
-    '/:pid',
-    upload.array('imagen', 10),
-    ProductController.updateProduct
-);
+// Obtener productos en oferta
+router.get('/ofertas', ProductController.getSales);
 
+// Obtener producto por ID
+router.get('/:pid', ProductController.getProductById);
+
+
+
+// Actualizar producto
+router.put('/:pid',upload.array('imagen', 10),ProductController.updateProduct);
+
+// Eliminar producto
 router.delete('/:pid', ProductController.deleteProduct);
 
 export default router;

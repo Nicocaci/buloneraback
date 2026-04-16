@@ -6,16 +6,15 @@ class UserDAO {
             const newUser = await UserModel.create(user);
             return newUser;
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
 
     async getUserById(id) {
         try {
-            const user = await UserModel.findById(id);
-            return user;
+            return await UserModel.findById(id);
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
     
@@ -24,7 +23,7 @@ class UserDAO {
             const updatedUser = await UserModel.findByIdAndUpdate(id, user, { new: true });
             return updatedUser;
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
     async deleteUser(id) {
@@ -32,7 +31,7 @@ class UserDAO {
             const deletedUser = await UserModel.findByIdAndDelete(id);
             return deletedUser;
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
     
@@ -41,7 +40,7 @@ class UserDAO {
             const users = await UserModel.find();
             return users;
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
     async getUserByEmail(email) {
@@ -49,7 +48,7 @@ class UserDAO {
             const user = await UserModel.findOne({ email });
             return user;
         } catch (error) {
-            throw new Error(error);
+            throw error;
         }
     }
 }

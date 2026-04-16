@@ -5,8 +5,8 @@ class ProductRepository {
     async createProduct(data){
         return await ProductDao.createProduct(data);
     }
-    async getProducts(page, limit, q = ''){
-        return await ProductDao.getProducts(page, limit, q);
+    async getProducts(filters){
+        return await ProductDao.getProducts(filters);
     }
     async getProductBySku(sku) {
         return await ProductDao.getProductBySku(sku);
@@ -31,6 +31,9 @@ class ProductRepository {
     }
     async getSubCategories(){
         return await ProductDao.getSubCategories();
+    }
+    async getSales(limit){
+        return await ProductDao.getSales(limit);
     }
 }
 export default new ProductRepository();
