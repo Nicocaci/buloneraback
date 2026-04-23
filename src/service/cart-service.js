@@ -1,4 +1,6 @@
 import CartRepository from "../repository/cart-repository.js";
+import CartModel from "../dao/models/cart-model.js";
+import mongoose from "mongoose";
 
 class CartService {
   async createCart(cart) {
@@ -39,5 +41,10 @@ class CartService {
   async saveCart(cart) {
     return await CartRepository.saveCart(cart);
   }
+  async deleteCartByUserId(userId) {
+  return await CartModel.deleteMany({
+    user: new mongoose.Types.ObjectId(userId),
+  });
+}
 }
 export default new CartService();

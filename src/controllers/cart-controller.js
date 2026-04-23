@@ -161,6 +161,7 @@ class CartController {
 
       res.status(200).json(cart);
     } catch (error) {
+      console.log(error);
       mapCartErrorToResponse(res, error);
     }
   }
@@ -246,6 +247,30 @@ class CartController {
       if (!cart) throw new Error("Carrito no encontrado");
 
       cart.products = [];
+
+      const updatedCart = await CartService.saveCart(cart);
+
+      res.status(200).json(updatedCart);
+    } catch (error) {
+      mapCartErrorToResponse(res, error);
+    }
+  }
+  async assignGuestCart(req, res) {
+    try {
+      const userId = req.user.id;
+      const { products } = req.body;
+
+      let cart = await CartService.getCartByUserId(userId);
+
+      if (!cart) {
+        cart = await CartService.createCartForUser(userId);
+      }
+
+      // 🔥 REEMPLAZA TODO (NO MERGE)
+      cart.products = products.map((p) => ({
+        product: p._id,
+        quantity: p.quantity,
+      }));
 
       const updatedCart = await CartService.saveCart(cart);
 

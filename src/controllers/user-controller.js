@@ -5,13 +5,15 @@ import CartService from "../service/cart-service.js";
 
 class UserController {
   async register(req, res) {
-    const { nombre, apellido, dni, direccion, email, password, cart, role } =
+    const { nombre, apellido, dni, direccion, email, password, role } =
       req.body;
+
     try {
       const existingUser = await UserService.getUserByEmail(email);
       if (existingUser) {
         return res.status(400).json({ message: "El email ya está registrado" });
       }
+
       if (!nombre || !apellido || !dni || !direccion || !email || !password) {
         return res.status(400).json({
           message: "Faltan Campos requeridos",
@@ -32,18 +34,31 @@ class UserController {
 
       const newCart = await CartService.createCart({ user: newUser._id });
 
-      // Actualizar el usuario con el ID del carrito
       const updatedUser = await UserService.updateUser(newUser._id, {
         cart: newCart._id,
       });
 
-      return res
-        .status(201)
-        .json({ message: "Usuario creado correctamente", user: updatedUser });
+      // 🔥 GENERAR TOKEN
+      const token = generateToken(
+        {
+          id: updatedUser._id,
+          role: updatedUser.role,
+          cart: updatedUser.cart,
+        },
+        process.env.PRIVATE_KEY,
+        { expiresIn: "7d" },
+      );
+
+      return res.status(201).json({
+        message: "Usuario creado correctamente",
+        token, // 🔥 CLAVE
+        user: updatedUser,
+      });
     } catch (error) {
-      return res
-        .status(500)
-        .json({ message: "Error al crear el usuario", error: error.message });
+      return res.status(500).json({
+        message: "Error al crear el usuario",
+        error: error.message,
+      });
     }
   }
   async login(req, res) {
@@ -93,16 +108,27 @@ class UserController {
   }
   async borrarUsuario(req, res) {
     const uId = req.params.uId;
+
     try {
-      const user = await UserService.deleteUser(uId);
+      const user = await UserService.getUserById(uId);
       if (!user) {
         return res.status(404).json({ message: "No se encontro usuario" });
       }
-      return res.status(204).json({ message: "Usuario eliminado con exito" });
+
+      // 🔥 BORRAR POR USER (no por cart)
+      await CartService.deleteCartByUserId(uId);
+
+      await UserService.deleteUser(uId);
+
+      return res.status(200).json({
+        message: "Usuario y carrito eliminados con exito",
+      });
     } catch (error) {
-      res
-        .status(500)
-        .json({ message: "Error para eliminar usuario " + error.message });
+      console.error("DELETE USER ERROR:", error);
+      res.status(500).json({
+        message: error.message,
+        stack: error.stack,
+      });
     }
   }
   async actualizarUsuario(req, res) {
@@ -133,27 +159,17 @@ class UserController {
     }
   }
   async obtenerUsuarioId(req, res) {
-    const { uid } = req.params;
+    const { id } = req.params;
 
-    console.log("ID params:", uid);
-    console.log("ID token:", req.user.id);
-    console.log("ROLE token:", req.user.role);
+    if (!id) {
+      return res.status(400).json({ message: "ID requerido" });
+    }
 
     try {
-      // 🔐 Seguridad
-      if (req.user.role !== "admin" && req.user.id !== uid) {
-        return res.status(403).json({ message: "No autorizado" });
-      }
-
-      const user = await UserService.getUserById(uid);
-      if (!user) {
-        return res.status(404).json({ message: "Usuario no encontrado" });
-      }
-
-      res.status(200).json(user);
+      const user = await UserService.getUserById(id);
+      res.json(user);
     } catch (error) {
-      console.error("Error al obtener usuario:", error.message);
-      res.status(500).json({ message: "Error interno del servidor" });
+      res.status(500).json({ message: error.message });
     }
   }
   async getUserByEmail(req, res) {
