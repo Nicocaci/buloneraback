@@ -1,23 +1,44 @@
 import ProductService from "../service/product-service.js";
-import ProductModel from "../dao/models/product-model.js";
 import fs from "fs";
-import path from "path";
 import mongoose from "mongoose";
 import cloudinary from "../config/cloudinary.js";
 
-// Función auxiliar fuera de la clase para no depender de `this`
-const deleteImageFromDisk = (imageName) => {
-  const rutaCompleta = path.join("uploads", imageName);
-  if (fs.existsSync(rutaCompleta)) {
+// ─────────────────────────────────────────
+// Helper: subir archivos a Cloudinary
+// ─────────────────────────────────────────
+const uploadToCloudinary = async (files) => {
+  const uploads = files.map((file) =>
+    cloudinary.uploader.upload(file.path, { folder: "products" }),
+  );
+  const results = await Promise.all(uploads);
+  // Borrar archivos temporales locales
+  files.forEach((file) => {
     try {
-      fs.unlinkSync(rutaCompleta);
-    } catch (error) {
-      console.error("Error al borrar imagen:", rutaCompleta, error);
+      fs.unlinkSync(file.path);
+    } catch (_) {}
+  });
+  return results.map((r) => r.secure_url);
+};
+
+// ─────────────────────────────────────────
+// Helper: borrar imágenes de Cloudinary
+// ─────────────────────────────────────────
+const deleteFromCloudinary = async (urls = []) => {
+  for (const url of urls) {
+    try {
+      // Extraer public_id desde la URL: .../products/nombre.jpg → products/nombre
+      const match = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[a-z]+$/i);
+      if (match) await cloudinary.uploader.destroy(match[1]);
+    } catch (err) {
+      console.error("Error al borrar imagen de Cloudinary:", url, err);
     }
   }
 };
 
 class ProductController {
+  // ─────────────────────────────────────────
+  // Crear producto
+  // ─────────────────────────────────────────
   async createProduct(req, res) {
     try {
       const {
@@ -31,42 +52,35 @@ class ProductController {
         iva,
         stock,
         estado,
-        oferta,
       } = req.body;
 
-      // 🔹 Parseo de oferta (por si viene como string)
-      const ofertaParsed = oferta === "true" || oferta === true;
-
-      // 🔹 Validaciones
-      if (!item || !descripcion || !categoria || !precio) {
-        return res.status(400).json({
-          message: "Faltan campos requeridos",
-        });
+      if (!item || !descripcion || !categoria || !precio || !sku) {
+        return res.status(400).json({ message: "Faltan campos requeridos" });
       }
 
       if (!req.files || req.files.length === 0) {
-        return res.status(400).json({
-          message: "Se requiere al menos una imagen",
-        });
+        return res
+          .status(400)
+          .json({ message: "Se requiere al menos una imagen" });
       }
 
-      // 🔹 Subida a Cloudinary (en paralelo)
-      const uploads = req.files.map((file) =>
-        cloudinary.uploader.upload(file.path, {
-          folder: "products",
-        }),
-      );
+      const imagenes = await uploadToCloudinary(req.files);
 
-      const results = await Promise.all(uploads);
+      // Parseo de oferta como objeto (no booleano)
+      let oferta = { activa: false, descuento: 0, vence: null };
+      if (req.body.oferta) {
+        try {
+          oferta =
+            typeof req.body.oferta === "string"
+              ? JSON.parse(req.body.oferta)
+              : req.body.oferta;
+        } catch (_) {
+          return res
+            .status(400)
+            .json({ message: "Formato de oferta inválido" });
+        }
+      }
 
-      const imagenes = results.map((r) => r.secure_url);
-
-      // 🔹 Borrar archivos locales
-      req.files.forEach((file) => {
-        fs.unlinkSync(file.path);
-      });
-
-      // 🔹 Crear producto
       const newProduct = await ProductService.createProduct({
         sku,
         item,
@@ -74,34 +88,30 @@ class ProductController {
         marca,
         categoria,
         subcategoria,
-        precio,
-        iva,
-        stock,
+        precio: Number(precio),
+        iva: Number(iva || 0),
+        stock: Number(stock),
         estado,
-        oferta: ofertaParsed,
+        oferta,
         imagen: imagenes,
       });
 
-      return res.status(201).json({
-        message: "Producto creado",
-        newProduct,
-      });
+      return res.status(201).json({ message: "Producto creado", newProduct });
     } catch (error) {
-      if (error.message?.includes("Código de producto duplicado")) {
-        return res.status(409).json({
-          message: error.message,
-        });
+      if (error.message?.includes("SKU")) {
+        return res.status(409).json({ message: error.message });
       }
-
-      return res.status(500).json({
-        message: "Error al crear producto",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al crear producto", error: error.message });
     }
   }
 
+  // ─────────────────────────────────────────
+  // Actualizar producto
+  // ─────────────────────────────────────────
   async updateProduct(req, res) {
-    const pid = req.params.pid;
+    const { pid } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(pid)) {
       return res.status(400).json({ message: "ID inválido" });
@@ -109,46 +119,50 @@ class ProductController {
 
     try {
       const product = await ProductService.getProductById(pid);
+      if (!product)
+        return res.status(404).json({ message: "Producto no encontrado" });
 
-      if (!product) {
-        return res.status(404).json({ message: "No existe el producto" });
+      const data = { ...req.body };
+      if (data.precio !== undefined) data.precio = Number(data.precio);
+      if (data.stock !== undefined) data.stock = Number(data.stock);
+      if (data.iva !== undefined) data.iva = Number(data.iva);
+      delete data.imagen; // nunca desde body
+
+      // Parseo de oferta si viene en body
+      if (data.oferta && typeof data.oferta === "string") {
+        try {
+          data.oferta = JSON.parse(data.oferta);
+        } catch (_) {
+          return res
+            .status(400)
+            .json({ message: "Formato de oferta inválido" });
+        }
       }
 
-      const nuevasImagenes = req.files?.map((file) => file.path) || [];
-
-      const data = {
-        ...req.body,
-        precio: req.body.precio ? Number(req.body.precio) : undefined,
-        stock: req.body.stock ? Number(req.body.stock) : undefined,
-      };
-
-      // 🚫 nunca permitir imagen desde body
-      delete data.imagen;
-
-      if (nuevasImagenes.length > 0) {
-        if (Array.isArray(product.imagen)) {
-          product.imagen.forEach((img) => deleteImageFromDisk(img));
-        }
-        data.imagen = nuevasImagenes;
+      // Si vienen nuevas imágenes, borrar las viejas de Cloudinary y subir nuevas
+      if (req.files && req.files.length > 0) {
+        await deleteFromCloudinary(product.imagen || []);
+        data.imagen = await uploadToCloudinary(req.files);
       }
 
       const updatedProduct = await ProductService.updateProduct(pid, data);
 
-      return res.status(200).json({
-        message: "Producto actualizado",
-        product: updatedProduct,
-      });
+      return res
+        .status(200)
+        .json({ message: "Producto actualizado", product: updatedProduct });
     } catch (error) {
       console.error("UPDATE ERROR:", error);
-      return res.status(500).json({
-        message: "Error al actualizar",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al actualizar", error: error.message });
     }
   }
 
+  // ─────────────────────────────────────────
+  // Eliminar producto
+  // ─────────────────────────────────────────
   async deleteProduct(req, res) {
-    const pid = req.params.pid;
+    const { pid } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(pid)) {
       return res.status(400).json({ message: "ID inválido" });
@@ -156,32 +170,23 @@ class ProductController {
 
     try {
       const product = await ProductService.getProductById(pid);
+      if (!product)
+        return res.status(404).json({ message: "Producto no encontrado" });
 
-      if (!product) {
-        return res.status(404).json({
-          message: "Producto no encontrado",
-        });
-      }
-
-      // Borrar todas las imágenes del array (usamos la función auxiliar, no `this`)
-      if (product.imagen && Array.isArray(product.imagen)) {
-        product.imagen.forEach((img) => deleteImageFromDisk(img));
-      }
-
+      await deleteFromCloudinary(product.imagen || []);
       await ProductService.deleteProduct(pid);
 
-      return res.status(200).json({
-        message: "Producto eliminado",
-      });
+      return res.status(200).json({ message: "Producto eliminado" });
     } catch (error) {
-      console.error(error);
-      return res.status(500).json({
-        message: "Error al eliminar producto",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al eliminar producto", error: error.message });
     }
   }
 
+  // ─────────────────────────────────────────
+  // Getters
+  // ─────────────────────────────────────────
   async getProducts(req, res) {
     try {
       const {
@@ -192,6 +197,7 @@ class ProductController {
         subcategory,
         marca,
         sort,
+        soloOfertas,
       } = req.query;
 
       const result = await ProductService.getProducts({
@@ -202,71 +208,61 @@ class ProductController {
         subcategory,
         marca,
         sort,
+        soloOfertas: soloOfertas === "true",
       });
 
       return res.status(200).json(result);
     } catch (error) {
-      return res.status(500).json({
-        message: "Error al obtener productos",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al obtener productos", error: error.message });
+    }
+  }
+
+  async getProductById(req, res) {
+    const { pid } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
+    }
+    try {
+      const product = await ProductService.getProductById(pid);
+      if (!product)
+        return res.status(404).json({ message: "Producto no encontrado" });
+      return res.status(200).json(product);
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Error al obtener producto", error: error.message });
     }
   }
 
   async getProductBySku(req, res) {
     const sku = (req.params.sku || "").trim();
     if (!sku) return res.status(400).json({ message: "SKU requerido" });
-
     try {
       const product = await ProductService.getProductBySku(sku);
       if (!product)
         return res.status(404).json({ message: "Producto no encontrado" });
       return res.status(200).json(product);
-    } catch (err) {
-      return res
-        .status(500)
-        .json({
-          message: "Error al obtener producto por SKU",
-          error: err.message,
-        });
-    }
-  }
-  async getProductById(req, res) {
-    const pid = req.params.pid;
-    if (!mongoose.Types.ObjectId.isValid(pid)) {
-      return res.status(400).json({ message: "ID inválido" });
-    }
-
-    try {
-      const product = await ProductService.getProductById(pid);
-      if (!product) {
-        return res.status(404).json({ message: "Producto no encontrado" });
-      }
-      return res.status(200).json(product);
     } catch (error) {
       return res.status(500).json({
-        message: "Error al obtener el producto",
+        message: "Error al obtener producto por SKU",
         error: error.message,
       });
     }
   }
 
   async getProductByBrand(req, res) {
-    const brand = req.params.brand;
+    const { brand } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
-    if (!brand) {
-      return res.status(400).json({ message: "Marca requerida" });
-    }
-
+    if (!brand) return res.status(400).json({ message: "Marca requerida" });
     try {
       const result = await ProductService.getProductByBrand(brand, page, limit);
-      if (!result.products.length) {
-        return res.status(404).json({
-          message: "No se encontró ningún producto con esa marca",
-        });
-      }
+      if (!result.products.length)
+        return res
+          .status(404)
+          .json({ message: "No se encontraron productos con esa marca" });
       return res.status(200).json(result);
     } catch (error) {
       return res.status(500).json({
@@ -275,44 +271,38 @@ class ProductController {
       });
     }
   }
+
   async getProductByCategory(req, res) {
     try {
       const categories = await ProductService.getDistinctCategories();
       return res.status(200).json(categories);
     } catch (error) {
-      return res.status(500).json({
-        message: "Error al obtener categorías",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al obtener categorías", error: error.message });
     }
   }
+
   async getProductBySubCategory(req, res) {
-    const subcategory = req.params.subcategory;
+    const { subcategory } = req.params;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-
-    if (!subcategory) {
+    if (!subcategory)
       return res.status(400).json({ message: "Subcategoría requerida" });
-    }
-
-    // Validar que page y limit sean números positivos
-    if (page < 1 || limit < 1) {
-      return res.status(400).json({
-        message: "Los parámetros 'page' y 'limit' deben ser números positivos",
-      });
-    }
-
+    if (page < 1 || limit < 1)
+      return res
+        .status(400)
+        .json({ message: "'page' y 'limit' deben ser positivos" });
     try {
       const result = await ProductService.getProductBySubCategory(
         subcategory,
         page,
         limit,
       );
-      if (!result.products.length) {
+      if (!result.products.length)
         return res.status(404).json({
-          message: "No se encontró ningún producto con esa subcategoría",
+          message: "No se encontraron productos con esa subcategoría",
         });
-      }
       return res.status(200).json(result);
     } catch (error) {
       return res.status(500).json({
@@ -321,14 +311,12 @@ class ProductController {
       });
     }
   }
+
   async getSubCategories(req, res) {
+    const { category } = req.params;
     try {
-      const { category } = req.params;
-
-      const subcategories = await ProductModel.distinct("subcategoria", {
-        categoria: category,
-      });
-
+      const subcategories =
+        await ProductService.getDistinctSubcategoriesByCategory(category);
       return res.status(200).json(subcategories);
     } catch (error) {
       return res.status(500).json({
@@ -337,16 +325,77 @@ class ProductController {
       });
     }
   }
+
   async getSales(req, res) {
     try {
       const limit = parseInt(req.query.limit) || 10;
       const sales = await ProductService.getSales(limit);
       return res.status(200).json(sales);
     } catch (error) {
-      return res.status(500).json({
-        message: "Error al obtener Productos en oferta",
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({ message: "Error al obtener ofertas", error: error.message });
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Ofertas
+  // ─────────────────────────────────────────
+
+  async activarOferta(req, res) {
+    const { pid } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
+    }
+    try {
+      const { descuento, vence } = req.body;
+      if (descuento === undefined || descuento === null) {
+        return res
+          .status(400)
+          .json({ message: "El campo 'descuento' es requerido" });
+      }
+      const updated = await ProductService.activarOferta(
+        pid,
+        Number(descuento),
+        vence || null,
+      );
+      return res
+        .status(200)
+        .json({ message: "Oferta activada", product: updated });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Error al activar oferta", error: error.message });
+    }
+  }
+
+  async desactivarOferta(req, res) {
+    const { pid } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(pid)) {
+      return res.status(400).json({ message: "ID inválido" });
+    }
+    try {
+      const updated = await ProductService.desactivarOferta(pid);
+      return res
+        .status(200)
+        .json({ message: "Oferta desactivada", product: updated });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Error al desactivar oferta", error: error.message });
+    }
+  }
+
+  async limpiarOfertasVencidas(req, res) {
+    try {
+      const count = await ProductService.limpiarOfertasVencidas();
+      return res
+        .status(200)
+        .json({ message: `${count} ofertas vencidas limpiadas` });
+    } catch (error) {
+      return res
+        .status(500)
+        .json({ message: "Error al limpiar ofertas", error: error.message });
     }
   }
 }

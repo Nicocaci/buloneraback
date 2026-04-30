@@ -9,7 +9,7 @@ const productSchema = new mongoose.Schema({
     categoria: { type: String, required: true },
     subcategoria: { type: String, required: true },
     precio: { type: Number, required: true },
-    iva: { type: Number, default: 0 },
+    iva: { type: Number, default: 21 },
     stock: { type: Number, required: true },
     estado: { type: String, enum: ["activo", "inactivo"], default: "activo" },
     oferta: { 
@@ -26,7 +26,7 @@ productSchema.virtual('precioConIva').get(function () {
 });
 
 productSchema.virtual("precioFinal").get(function () {
-    const base = thisprecioConIva;
+    const base = this.precioConIva;
     if( !this.oferta.activa || this.oferta.descuento === 0) return base;
     return Math.round(base * (1 - this.oferta.descuento / 100));
 });
