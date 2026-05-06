@@ -1,4 +1,5 @@
 import ProductRepository from "../repository/product-repository.js";
+import ProductModel from "../dao/models/product-model.js";
 
 class ProductService {
   // ─────────────────────────────────────────
@@ -42,25 +43,24 @@ class ProductService {
   }
 
   async getProductBySubCategory(subcategoria, page, limit) {
-    return await ProductRepository.getProductBySubCategory(subcategoria, page, limit);
+    return await ProductRepository.getProductBySubCategory(
+      subcategoria,
+      page,
+      limit,
+    );
   }
 
   // ─────────────────────────────────────────
   // Categorías y subcategorías
   // ─────────────────────────────────────────
 
-  async getSubCategories() {
-    return await ProductRepository.getSubCategories();
-  }
-
   async getDistinctCategories() {
-    return await ProductRepository.getDistinctSubcategoriesByCategory; 
-    // Se delega al repository — si necesitás distinct de categorías,
-    // agregá getDistinctCategories() en DAO y Repository.
+    return await ProductModel.distinct("categoria");
   }
-
   async getDistinctSubcategoriesByCategory(categoria) {
-    return await ProductRepository.getDistinctSubcategoriesByCategory(categoria);
+    return await ProductRepository.getDistinctSubcategoriesByCategory(
+      categoria,
+    );
   }
 
   // ─────────────────────────────────────────

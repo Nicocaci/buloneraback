@@ -4,22 +4,12 @@ import upload from "../config/multerConfig.js";
 
 const router = express.Router();
 
-// ─────────────────────────────────────────
-// Colección
-// ─────────────────────────────────────────
-
-// Crear producto
-router.post("/", upload.array("imagen", 10), ProductController.createProduct);
-
-// Obtener productos (con todos los filtros + ?soloOfertas=true)
-router.get("/", ProductController.getProducts);
-
-// ─────────────────────────────────────────
-// Rutas estáticas (van ANTES de /:pid)
-// ─────────────────────────────────────────
-
 // Subcategorías por categoría
-router.get("/subcategorias/:category", ProductController.getSubCategories);
+router.get("/categorias", ProductController.getCategories);
+router.get(
+  "/subcategorias/:category",
+  ProductController.getSubcategoriesByCategory,
+);
 
 // Buscar por SKU
 router.get("/sku/:sku", ProductController.getProductBySku);
@@ -30,6 +20,12 @@ router.get("/ofertas", ProductController.getSales);
 // Limpiar ofertas vencidas (admin)
 router.post("/ofertas/limpiar", ProductController.limpiarOfertasVencidas);
 
+// Crear producto
+router.post("/", upload.array("imagen", 10), ProductController.createProduct);
+
+// Obtener productos (con todos los filtros + ?soloOfertas=true)
+router.get("/", ProductController.getProducts);
+
 // ─────────────────────────────────────────
 // Rutas dinámicas con :pid
 // ─────────────────────────────────────────
@@ -38,7 +34,11 @@ router.post("/ofertas/limpiar", ProductController.limpiarOfertasVencidas);
 router.get("/:pid", ProductController.getProductById);
 
 // Actualizar producto
-router.put("/:pid", upload.array("imagen", 10), ProductController.updateProduct);
+router.put(
+  "/:pid",
+  upload.array("imagen", 10),
+  ProductController.updateProduct,
+);
 
 // Eliminar producto
 router.delete("/:pid", ProductController.deleteProduct);

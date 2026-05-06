@@ -1,4 +1,5 @@
 import ProductService from "../service/product-service.js";
+import ProductModel from "../dao/models/product-model.js";
 import fs from "fs";
 import mongoose from "mongoose";
 import cloudinary from "../config/cloudinary.js";
@@ -272,51 +273,27 @@ class ProductController {
     }
   }
 
-  async getProductByCategory(req, res) {
+  async getCategories(req, res) {
     try {
       const categories = await ProductService.getDistinctCategories();
       return res.status(200).json(categories);
     } catch (error) {
-      return res
-        .status(500)
-        .json({ message: "Error al obtener categorías", error: error.message });
-    }
-  }
-
-  async getProductBySubCategory(req, res) {
-    const { subcategory } = req.params;
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    if (!subcategory)
-      return res.status(400).json({ message: "Subcategoría requerida" });
-    if (page < 1 || limit < 1)
-      return res
-        .status(400)
-        .json({ message: "'page' y 'limit' deben ser positivos" });
-    try {
-      const result = await ProductService.getProductBySubCategory(
-        subcategory,
-        page,
-        limit,
-      );
-      if (!result.products.length)
-        return res.status(404).json({
-          message: "No se encontraron productos con esa subcategoría",
-        });
-      return res.status(200).json(result);
-    } catch (error) {
       return res.status(500).json({
-        message: "Error al obtener productos por subcategoría",
+        message: "Error al obtener categorías",
         error: error.message,
       });
     }
   }
 
-  async getSubCategories(req, res) {
-    const { category } = req.params;
+
+  async getSubcategoriesByCategory(req, res) {
     try {
-      const subcategories =
-        await ProductService.getDistinctSubcategoriesByCategory(category);
+      const { category } = req.params;
+
+      const subcategories = await ProductModel.distinct("subcategoria", {
+        categoria: category,
+      });
+
       return res.status(200).json(subcategories);
     } catch (error) {
       return res.status(500).json({
