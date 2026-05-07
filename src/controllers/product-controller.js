@@ -3,22 +3,27 @@ import ProductModel from "../dao/models/product-model.js";
 import fs from "fs";
 import mongoose from "mongoose";
 import cloudinary from "../config/cloudinary.js";
+import streamifier from "streamifier";
 
 // ─────────────────────────────────────────
 // Helper: subir archivos a Cloudinary
 // ─────────────────────────────────────────
-const uploadToCloudinary = async (files) => {
-  const uploads = files.map((file) =>
-    cloudinary.uploader.upload(file.path, { folder: "products" }),
-  );
-  const results = await Promise.all(uploads);
-  // Borrar archivos temporales locales
-  files.forEach((file) => {
-    try {
-      fs.unlinkSync(file.path);
-    } catch (_) {}
+const uploadToCloudinary = (files) => {
+  const uploads = files.map((file) => {
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "products" },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      streamifier.createReadStream(file.buffer).pipe(stream);
+    });
   });
-  return results.map((r) => r.secure_url);
+  return Promise.all(uploads).then((results) =>
+    results.map((r) => r.secure_url)
+  );
 };
 
 // ─────────────────────────────────────────
