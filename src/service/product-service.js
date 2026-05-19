@@ -55,7 +55,7 @@ class ProductService {
   // ─────────────────────────────────────────
 
   async getDistinctCategories() {
-    return await ProductModel.distinct("categoria");
+    return await ProductRepository.getDistinctCategories();
   }
   async getDistinctSubcategoriesByCategory(categoria) {
     return await ProductRepository.getDistinctSubcategoriesByCategory(

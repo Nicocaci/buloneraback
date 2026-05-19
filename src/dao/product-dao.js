@@ -189,6 +189,19 @@ class ProductDao {
       throw error;
     }
   }
+  async getDistinctCategories() {
+    const result = await ProductModel.aggregate([
+      { $match: { categoria: { $exists: true, $ne: null, $ne: "" } } },
+      {
+        $group: {
+          _id: { $toLower: { $trim: { input: "$categoria" } } },
+          label: { $first: { $trim: { input: "$categoria" } } },
+        },
+      },
+      { $sort: { label: 1 } },
+    ]);
+    return result.map((r) => r.label);
+  }
 
   async getDistinctSubcategoriesByCategory(categoria) {
     try {

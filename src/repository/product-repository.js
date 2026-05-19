@@ -42,7 +42,11 @@ class ProductRepository {
   }
 
   async getProductBySubCategory(subcategoria, page = 1, limit = 10) {
-    return await ProductDao.getProducts({ subcategory: subcategoria, page, limit });
+    return await ProductDao.getProducts({
+      subcategory: subcategoria,
+      page,
+      limit,
+    });
   }
 
   // ─────────────────────────────────────────
@@ -51,6 +55,9 @@ class ProductRepository {
 
   async getSubCategories() {
     return await ProductDao.getSubCategories();
+  }
+  async getDistinctCategories() {
+    return await ProductDao.getDistinctCategories();
   }
 
   async getDistinctSubcategoriesByCategory(categoria) {
