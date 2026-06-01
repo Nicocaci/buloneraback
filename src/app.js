@@ -7,7 +7,7 @@ import userRouter from "./router/user-router.js";
 import cartRouter from "./router/cart-router.js";
 import productRouter from "./router/product-router.js";
 import orderRouter from "./router/order-router.js";
-import mercadoPagoRouter from "./router/mp-test-router.js";
+import mercadoPagoRouter from "./router/mp-router.js";
 
 import dotenv from "dotenv";
 dotenv.config();

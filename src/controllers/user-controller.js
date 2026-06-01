@@ -79,8 +79,8 @@ class UserController {
       });
 
       res.cookie("access_token", token, {
-        httpOnly: false,
-        secure: false,
+        httpOnly: true,
+        secure: true,
         sameSite: "none",
         maxAge: 24 * 60 * 60 * 1000,
         path: "/",
@@ -98,11 +98,11 @@ class UserController {
   }
   async cerrarSesion(req, res) {
     res.clearCookie("access_token", {
-      httpOnly: false,
-      secure: false,
-      sameSite: "none",
-      path: "/",
-      domain: "railway.app",
+        httpOnly: false,
+        secure: false,
+        sameSite: "none",
+        path: "/",
+        domain: "railway.app",
     });
     res.status(200).json({ message: "Logout Exitoso" });
   }
