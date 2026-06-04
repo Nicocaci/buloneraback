@@ -8,6 +8,7 @@ import cartRouter from "./router/cart-router.js";
 import productRouter from "./router/product-router.js";
 import orderRouter from "./router/order-router.js";
 import mercadoPagoRouter from "./router/mp-router.js";
+import sendEmailRouter from "./router/email-router.js";
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -74,7 +75,7 @@ app.use("/api/cart", cartRouter);
 app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/mp", mercadoPagoRouter);
-
+app.use("/api/email", sendEmailRouter);
 // 🚀 SERVER
 app.listen(PORT, () =>
   console.log(`Escuchando en el puerto: ${PORT}`)
