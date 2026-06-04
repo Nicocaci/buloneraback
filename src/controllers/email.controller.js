@@ -11,7 +11,7 @@ export const sendEmail = async ( req, res) => {
         }
         const response = await resend.emails.send({
             from: "BULONERA EL TRIÁNGULO <contacto@buloneraeltriangulo.com>",
-            to: "b.eltriangulo@gmail.com",
+            to: "b.eltraingulo@gmail.com",
             subject: `Nuevo mensaje de ${nombre}`,
             html: `
                 <p><strong>Nombre:</strong> ${nombre}</p>
