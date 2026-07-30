@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Preference, Payment } from "mercadopago";
+import { MercadoPagoConfig, Preference, Payment, PaymentMethod } from "mercadopago";
 import OrderModel from "../dao/models/order-model.js";
 import CartModel from "../dao/models/cart-model.js";
 import dotenv from "dotenv";
@@ -41,6 +41,14 @@ export const createOrder = async (req, res) => {
         name: payer.name,
         surname: payer.surname,
         email: payer.email,
+      },
+
+      payment_methods: {
+        installments: 3,
+        excluded_payment_types: [
+          { id:"ticket"}
+        ],
+        excluded_payment_methods: []
       },
 
       external_reference: cart._id,

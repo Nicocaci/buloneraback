@@ -11,8 +11,8 @@ export const sendEmail = async ( req, res) => {
         }
         const response = await resend.emails.send({
             from: "BULONERA EL TRIÁNGULO <contacto@buloneraeltriangulo.com>",
-            to: "b.eltraingulo@gmail.com",
-            subject: `Nuevo mensaje de ${nombre}`,
+            to: "eltrianguloventasonline@gmail.com",
+            subject: ` SOLICITUD DE COTIZACIÓN ${nombre}`,
             html: `
                 <p><strong>Nombre:</strong> ${nombre}</p>
                 <p><strong>Empresa:</strong> ${empresa}</p>
