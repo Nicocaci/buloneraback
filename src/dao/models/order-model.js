@@ -15,6 +15,7 @@ const orderSchema = new mongoose.Schema({
   paymentId: {
     type: String,
     unique: true,
+    sparse: true,
   },
   products: [
     {

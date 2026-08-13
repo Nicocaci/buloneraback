@@ -9,6 +9,8 @@ import productRouter from "./router/product-router.js";
 import orderRouter from "./router/order-router.js";
 import mercadoPagoRouter from "./router/mp-router.js";
 import sendEmailRouter from "./router/email-router.js";
+import shippingRouter from "./router/shipping.router.js";              // 👈 nuevo
+import shippingWebhookRouter from "./router/shipping-webhook-router.js"; // 👈 nuevo
 
 import dotenv from "dotenv";
 dotenv.config();
@@ -28,23 +30,19 @@ const allowedOrigins = [
   "https://buloneraeltriangulo.com",
 ];
 
-// 🔌 Conexión DB
 mongoose
   .connect(process.env.MONGO_URL)
   .then(() => console.log("Conectado con MongoDB"))
   .catch(() => console.log("Error al conectar con MongoDB"));
 
-// 🔥 MIDDLEWARES
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use(cookieParser()); // 🔥 IMPORTANTE para leer cookies
+app.use(cookieParser());
 
-// 🔥 CORS
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       } else {
@@ -57,17 +55,14 @@ app.use(
   })
 );
 
-// 🔥 DESACTIVAR CACHE (SOLUCIÓN AL 304)
 app.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
 
-// 📁 Static
 app.use("/uploads", express.static("uploads"));
 app.use(express.static("./src/public"));
 
-// 🚀 RUTAS
 app.get("/", (req, res) => res.send("Estamos On"));
 
 app.use("/api/user", userRouter);
@@ -76,7 +71,9 @@ app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/mp", mercadoPagoRouter);
 app.use("/api/email", sendEmailRouter);
-// 🚀 SERVER
+app.use("/api/shipping", shippingRouter);          // 👈 nuevo
+app.use("/webhooks", shippingWebhookRouter);       // 👈 nuevo, fuera de /api
+
 app.listen(PORT, () =>
   console.log(`Escuchando en el puerto: ${PORT}`)
 );
