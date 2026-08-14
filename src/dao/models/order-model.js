@@ -17,6 +17,13 @@ const orderSchema = new mongoose.Schema({
     unique: true,
     sparse: true,
   },
+  enviopack: {
+    pedidoId: { type: Number },
+    envioId: { type: Number },
+    trackingNumber: { type: String, default: null },
+    condicion: { type: String, default: null }, // código crudo, útil para debug
+    necesitaAtencion: { type: Boolean, default: false },
+  },
   products: [
     {
       product: {

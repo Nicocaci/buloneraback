@@ -4,6 +4,6 @@ import { handleEnviopackWebhook } from "../controllers/shipping.controller.js";
 
 const router = Router();
 
-router.post("/enviopack", handleEnviopackWebhook);
+router.get("/enviopack", handleEnviopackWebhook);
 
 export default router;

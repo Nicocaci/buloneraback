@@ -49,3 +49,9 @@ export function cotizarCosto(params) {
     },
   });
 }
+export function getEnvio(envioId) {
+  return enviopackRequest("GET", `/envios/${envioId}`);
+}
+export function getCondiciones() {
+  return enviopackRequest("GET", "/envios/condiciones");
+}
