@@ -12,6 +12,10 @@ const productSchema = new mongoose.Schema({
     iva: { type: Number, default: 21 },
     stock: { type: Number, required: true },
     estado: { type: String, enum: ["activo", "inactivo"], default: "activo" },
+    peso: { type: Number, default: 1, min: 0 },       // kg
+    alto: { type: Number, default: 20, min: 0 },      // cm
+    ancho: { type: Number, default: 15, min: 0 },     // cm
+    largo: { type: Number, default: 10, min: 0 },     // cm
     oferta: { 
         activa: { type:Boolean, default: false},
         descuento: { type:Number, default:0, min:0, max:100},

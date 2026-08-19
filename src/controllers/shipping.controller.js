@@ -23,7 +23,7 @@ function mapCondicionToStatus(condicion) {
 // Tu cuenta usa Distribución Unificada, así que por ahora solo "enviopack"
 // está realmente activo (confirmado en app.enviopack.com/configuracion/distribucion).
 // Si en el futuro activás carriers individuales para domicilio, sumalos acá.
-const CORREOS_HABILITADOS = ["enviopack"];
+const CORREOS_HABILITADOS = ["enviopack", "oca","urbano"];
 function dedupeCheapestByCorreo(cotizaciones) {
   const porCorreo = new Map();
 
@@ -57,7 +57,10 @@ export async function getShippingOptions(req, res) {
           })
         : Promise.resolve([]),
     ]);
-
+    console.log(
+      "=== COTIZACIONES ENVIÓPACK ===",
+      JSON.stringify(aDomicilio, null, 2),
+    );
     const domicilioFiltrado = dedupeCheapestByCorreo(
       aDomicilio.filter(
         (o) =>
@@ -108,15 +111,27 @@ export async function shipOrder(req, res) {
       provincia: orderData.provincia,
       localidad: orderData.localidad,
     });
-
+    console.log("=== DATOS ENVÍO ===");
+    console.log({
+      direccion_envio: Number(process.env.ENVIOPACK_DIRECCION_ENVIO),
+      codigo_postal: orderData.codigo_postal,
+      provincia: orderData.provincia,
+      localidad: orderData.localidad,
+      shippingChoice,
+    });
     const envio = await crearEnvio({
       pedido: pedido.id,
       direccion_envio: Number(process.env.ENVIOPACK_DIRECCION_ENVIO),
       destinatario: `${orderData.nombre} ${orderData.apellido}`,
+
+      despacho: shippingChoice.despacho, // 👈 FALTABA ESTO
+
       modalidad: shippingChoice.modalidad,
-      correo: shippingChoice.correo, // 👈 siempre, sin condicional
-      servicio: shippingChoice.servicio, // 👈 siempre, sin condicional
+      correo: shippingChoice.correo,
+      servicio: shippingChoice.servicio,
+
       confirmado: true,
+
       calle: orderData.calle,
       numero: orderData.numero,
       codigo_postal: orderData.codigo_postal,
@@ -129,6 +144,10 @@ export async function shipOrder(req, res) {
       "enviopack.envioId": envio.id,
     });
     res.json({ pedido, envio });
+    console.log(
+      "=== SHIPPING CHOICE RECIBIDO ===",
+      JSON.stringify(shippingChoice, null, 2),
+    );
   } catch (err) {
     console.error("Enviopack error:", err.response?.data || err.message);
     res.status(500).json({ error: "No se pudo confirmar el envío" });
@@ -156,14 +175,17 @@ export async function handleEnviopackWebhook(req, res) {
     if (tipo === "envio-procesado" || tipo === "envio-cambio-condicion") {
       const envio = await getEnvio(id);
 
-      const order = await OrderModel.findOne({ "enviopack.envioId": Number(id) });
+      const order = await OrderModel.findOne({
+        "enviopack.envioId": Number(id),
+      });
       if (!order) {
         console.warn(`Webhook: no se encontró orden para envioId ${id}`);
         return;
       }
 
       order.enviopack.condicion = envio.condicion;
-      order.enviopack.trackingNumber = envio.tracking_number || order.enviopack.trackingNumber;
+      order.enviopack.trackingNumber =
+        envio.tracking_number || order.enviopack.trackingNumber;
 
       const status = mapCondicionToStatus(envio.condicion);
       if (status) {
@@ -172,7 +194,7 @@ export async function handleEnviopackWebhook(req, res) {
 
       if (CONDICIONES_CON_ALERTA.has(envio.condicion)) {
         console.warn(
-          `⚠️ Orden ${order._id} requiere atención — condición Enviopack: ${envio.condicion} (${envio.sub_condicion || "sin subcondición"})`
+          `⚠️ Orden ${order._id} requiere atención — condición Enviopack: ${envio.condicion} (${envio.sub_condicion || "sin subcondición"})`,
         );
         order.enviopack.necesitaAtencion = true;
       } else {
@@ -180,13 +202,17 @@ export async function handleEnviopackWebhook(req, res) {
       }
 
       await order.save();
-      console.log(`Orden ${order._id} actualizada: condicion=${envio.condicion}, status=${order.status}`);
+      console.log(
+        `Orden ${order._id} actualizada: condicion=${envio.condicion}, status=${order.status}`,
+      );
     }
   } catch (err) {
-    console.error("Error procesando webhook de Enviopack:", err.response?.data || err.message);
+    console.error(
+      "Error procesando webhook de Enviopack:",
+      err.response?.data || err.message,
+    );
   }
 }
-
 
 export async function getShippingCost(req, res) {
   try {
