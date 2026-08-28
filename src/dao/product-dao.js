@@ -67,16 +67,20 @@ class ProductDao {
 
       const skip = (page - 1) * limit;
       const query = { estado: "activo" };
+      query.$and = [];
 
       // 🔍 BÚSQUEDA GLOBAL
       if (search) {
         const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        query.$or = [
-          { item: { $regex: escaped, $options: "i" } },
-          { categoria: { $regex: escaped, $options: "i" } },
-          { subcategoria: { $regex: escaped, $options: "i" } },
-          { marca: { $regex: escaped, $options: "i" } },
-        ];
+        query.$and.push({
+          $or: [
+            { item: { $regex: escaped, $options: "i" } },
+            { categoria: { $regex: escaped, $options: "i" } },
+            { subcategoria: { $regex: escaped, $options: "i" } },
+            { marca: { $regex: escaped, $options: "i" } },
+            { sku: { $regex: escaped, $options: "i" } },
+          ],
+        });
       }
 
       // 📦 FILTROS
@@ -95,11 +99,16 @@ class ProductDao {
       if (soloOfertas) {
         query["oferta.activa"] = true;
         query["oferta.descuento"] = { $gt: 0 };
-        query.$or = [
-          { "oferta.vence": null },
-          { "oferta.vence": { $gt: new Date() } },
-        ];
+        query.$and.push({
+          $or: [
+            { "oferta.vence": null },
+            { "oferta.vence": { $gt: new Date() } },
+          ],
+        });
       }
+
+      // Si no se usó $and, lo eliminamos para no ensuciar la query
+      if (query.$and.length === 0) delete query.$and;
 
       // 📊 ORDEN
       let sortOption = {};

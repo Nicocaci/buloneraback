@@ -23,7 +23,18 @@ function mapCondicionToStatus(condicion) {
 // Tu cuenta usa Distribución Unificada, así que por ahora solo "enviopack"
 // está realmente activo (confirmado en app.enviopack.com/configuracion/distribucion).
 // Si en el futuro activás carriers individuales para domicilio, sumalos acá.
-const CORREOS_HABILITADOS = ["enviopack", "oca","urbano"];
+const CORREOS_HABILITADOS = ["enviopack", "oca", "urbano"];
+
+// 👇 Filtra por tipo de despacho según si el correo tiene sucursales o no:
+// - Si el correo tiene sucursales (OCA, Urbano): despacho "S" (vos llevás el paquete a la sucursal, más barato).
+// - Si el correo NO tiene sucursales (Red Envíopack): despacho "D" (te lo retiran, es la única opción que existe).
+function filtrarPorDespacho(cotizaciones) {
+  return cotizaciones.filter((o) => {
+    const tieneSucursales = o.correo?.tiene_sucursales;
+    return tieneSucursales ? o.despacho === "S" : o.despacho === "D";
+  });
+}
+
 function dedupeCheapestByCorreo(cotizaciones) {
   const porCorreo = new Map();
 
@@ -37,6 +48,7 @@ function dedupeCheapestByCorreo(cotizaciones) {
 
   return Array.from(porCorreo.values());
 }
+
 export async function getShippingOptions(req, res) {
   try {
     const { provincia, codigo_postal, peso, paquetes, localidad } = req.query;
@@ -61,10 +73,16 @@ export async function getShippingOptions(req, res) {
       "=== COTIZACIONES ENVIÓPACK ===",
       JSON.stringify(aDomicilio, null, 2),
     );
+
+    // 1. Filtrar por modalidad domicilio + correos habilitados
+    // 2. Filtrar por tipo de despacho correcto según el correo
+    // 3. Quedarnos con la más barata por correo+servicio
     const domicilioFiltrado = dedupeCheapestByCorreo(
-      aDomicilio.filter(
-        (o) =>
-          o.modalidad === "D" && CORREOS_HABILITADOS.includes(o.correo?.id),
+      filtrarPorDespacho(
+        aDomicilio.filter(
+          (o) =>
+            o.modalidad === "D" && CORREOS_HABILITADOS.includes(o.correo?.id),
+        ),
       ),
     );
 
@@ -72,6 +90,7 @@ export async function getShippingOptions(req, res) {
       ...domicilioFiltrado.map((o) => ({
         tipo: "domicilio",
         correo: o.correo?.id,
+        despacho: o.despacho, // 👈 antes faltaba, shipOrder lo necesita para crearEnvio
         modalidad: o.modalidad,
         servicio: o.servicio,
         valor: o.valor,
@@ -80,6 +99,7 @@ export async function getShippingOptions(req, res) {
       ...aSucursal.map((o) => ({
         tipo: "sucursal",
         correo: o.sucursal.correo.id,
+        despacho: o.despacho, // 👈 mismo fix, por consistencia
         modalidad: o.modalidad,
         servicio: o.servicio,
         valor: o.valor,
@@ -94,6 +114,7 @@ export async function getShippingOptions(req, res) {
     res.status(500).json({ err: "Error al obtener las opciones de envío" });
   }
 }
+
 export async function shipOrder(req, res) {
   try {
     const { orderId } = req.params;
@@ -124,7 +145,7 @@ export async function shipOrder(req, res) {
       direccion_envio: Number(process.env.ENVIOPACK_DIRECCION_ENVIO),
       destinatario: `${orderData.nombre} ${orderData.apellido}`,
 
-      despacho: shippingChoice.despacho, // 👈 FALTABA ESTO
+      despacho: shippingChoice.despacho,
 
       modalidad: shippingChoice.modalidad,
       correo: shippingChoice.correo,
@@ -153,6 +174,7 @@ export async function shipOrder(req, res) {
     res.status(500).json({ error: "No se pudo confirmar el envío" });
   }
 }
+
 export async function getShipmentTracking(req, res) {
   try {
     const { envioId } = req.params;
@@ -231,6 +253,7 @@ export async function getShippingCost(req, res) {
     res.status(500).json({ err: "No se pudo obtener el costo de envío" });
   }
 }
+
 export async function getShippingCondiciones(req, res) {
   try {
     const data = await getCondiciones();
