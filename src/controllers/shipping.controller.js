@@ -7,6 +7,7 @@ import {
   getTracking,
   getEnvio,
   getCondiciones,
+  getEtiqueta
 } from "../service/enviopack/shipping.js";
 import OrderModel from "../dao/models/order-model.js";
 
@@ -15,6 +16,7 @@ const CONDICION_TO_STATUS = {
   E: "entregado",
   C: "cancelado",
 };
+const CONDICIONES_CON_ALERTA = new Set(["R", "D", "A"]); 
 function mapCondicionToStatus(condicion) {
   return CONDICION_TO_STATUS[condicion] || null;
 }
@@ -261,5 +263,29 @@ export async function getShippingCondiciones(req, res) {
   } catch (err) {
     console.error("Enviopack error:", err.response?.data || err.message);
     res.status(500).json({ error: "No se pudo obtener las condiciones" });
+  }
+}
+export async function getShippingLabel(req, res) {
+  try {
+    const { envioId } = req.params;
+    const { formato = "pdf", bulto } = req.query;
+
+    const archivo = await getEtiqueta(Number(envioId), formato, bulto);
+
+    res.set({
+      "Content-Type": formato === "jpg" ? "image/jpeg" : "application/pdf",
+      "Content-Disposition": `inline; filename="etiqueta-${envioId}.${formato}"`,
+    });
+    res.send(Buffer.from(archivo));
+  } catch (err) {
+    const detalle = err.response?.data
+      ? Buffer.from(err.response.data).toString()
+      : err.message;
+    console.error("Enviopack error (etiqueta):", detalle);
+
+    // Si el envío todavía no está "Procesado", Enviopack devuelve error acá
+    res.status(err.response?.status || 500).json({
+      error: "No se pudo obtener la etiqueta (¿el envío ya está en estado Procesado?)",
+    });
   }
 }

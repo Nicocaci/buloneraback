@@ -55,3 +55,18 @@ export function getEnvio(envioId) {
 export function getCondiciones() {
   return enviopackRequest("GET", "/envios/condiciones");
 }
+// Etiqueta de un envío puntual (formato: "pdf" | "jpg", bulto solo si es jpg y hay más de 1 paquete)
+export function getEtiqueta(envioId, formato = "pdf", bulto) {
+  return enviopackRequest("GET", `/envios/${envioId}/etiqueta`, {
+    params: { formato, ...(bulto ? { bulto } : {}) },
+    responseType: "arraybuffer",
+  });
+}
+
+// Etiquetas en lote (siempre devuelve PDF, ids separados por coma)
+export function getEtiquetasLote(ids) {
+  return enviopackRequest("GET", "/envios/etiquetas", {
+    params: { ids: Array.isArray(ids) ? ids.join(",") : ids },
+    responseType: "arraybuffer",
+  });
+}
