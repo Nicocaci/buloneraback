@@ -1,7 +1,4 @@
-import { Resend } from "resend";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
+import { resend } from "../config/resend-client.js";
 export const sendEmail = async (req, res) => {
   try {
     const { nombre, empresa, email, telefono, mensaje } = req.body;

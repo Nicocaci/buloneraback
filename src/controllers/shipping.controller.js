@@ -31,10 +31,7 @@ const CORREOS_HABILITADOS = ["enviopack", "oca", "urbano"];
 // - Si el correo tiene sucursales (OCA, Urbano): despacho "S" (vos llevás el paquete a la sucursal, más barato).
 // - Si el correo NO tiene sucursales (Red Envíopack): despacho "D" (te lo retiran, es la única opción que existe).
 function filtrarPorDespacho(cotizaciones) {
-  return cotizaciones.filter((o) => {
-    const tieneSucursales = o.correo?.tiene_sucursales;
-    return tieneSucursales ? o.despacho === "S" : o.despacho === "D";
-  });
+  return cotizaciones.filter((o) => o.despacho === "S");
 }
 
 function dedupeCheapestByCorreo(cotizaciones) {

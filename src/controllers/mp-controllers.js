@@ -1,4 +1,10 @@
-import { MercadoPagoConfig, Preference, Payment, PaymentMethod } from "mercadopago";
+import {
+  MercadoPagoConfig,
+  Preference,
+  Payment,
+  PaymentMethod,
+} from "mercadopago";
+import { sendOrderConfirmationEmail } from "../service/order-email-service.js";
 import OrderModel from "../dao/models/order-model.js";
 import CartModel from "../dao/models/cart-model.js";
 import dotenv from "dotenv";
@@ -45,10 +51,8 @@ export const createOrder = async (req, res) => {
 
       payment_methods: {
         installments: 3,
-        excluded_payment_types: [
-          { id:"ticket"}
-        ],
-        excluded_payment_methods: []
+        excluded_payment_types: [{ id: "ticket" }],
+        excluded_payment_methods: [],
       },
 
       external_reference: cart._id,
@@ -161,6 +165,16 @@ export const mercadoPagoWebhook = async (req, res) => {
         await cart.save();
 
         console.log("Carrito vaciado");
+        // 📧 Email de confirmación (no bloqueante)
+        sendOrderConfirmationEmail({
+          to: payment.payer?.email,
+          orderId: newOrder._id,
+          items: itemsForEmail,
+          total,
+          customerName: payment.payer?.first_name,
+        }).catch((err) => {
+          console.error("Error enviando email de confirmación:", err);
+        });
       }
     }
 
