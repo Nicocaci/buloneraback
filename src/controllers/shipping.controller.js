@@ -2,13 +2,12 @@ import {
   cotizarADomicilio,
   cotizarASucursal,
   cotizarCosto,
-  crearPedido,
-  crearEnvio,
   getTracking,
   getEnvio,
   getCondiciones,
-  getEtiqueta
+  getEtiqueta,
 } from "../service/enviopack/shipping.js";
+import { createEnviopackShipment } from "../service/enviopack/order-shipping-service.js";
 import OrderModel from "../dao/models/order-model.js";
 
 const CONDICION_TO_STATUS = {
@@ -120,54 +119,22 @@ export async function shipOrder(req, res) {
     const orderData = req.body;
     const shippingChoice = orderData.shippingChoice;
 
-    const pedido = await crearPedido({
-      id_externo: orderId,
+    const { pedido, envio } = await createEnviopackShipment({
+      orderId,
       nombre: orderData.nombre,
       apellido: orderData.apellido,
       email: orderData.email,
       monto: orderData.monto,
-      fecha_alta: new Date().toISOString().slice(0, 19).replace("T", " "),
-      pagado: true,
       provincia: orderData.provincia,
       localidad: orderData.localidad,
-    });
-    console.log("=== DATOS ENVÍO ===");
-    console.log({
-      direccion_envio: Number(process.env.ENVIOPACK_DIRECCION_ENVIO),
-      codigo_postal: orderData.codigo_postal,
-      provincia: orderData.provincia,
-      localidad: orderData.localidad,
-      shippingChoice,
-    });
-    const envio = await crearEnvio({
-      pedido: pedido.id,
-      direccion_envio: Number(process.env.ENVIOPACK_DIRECCION_ENVIO),
-      destinatario: `${orderData.nombre} ${orderData.apellido}`,
-
-      despacho: shippingChoice.despacho,
-
-      modalidad: shippingChoice.modalidad,
-      correo: shippingChoice.correo,
-      servicio: shippingChoice.servicio,
-
-      confirmado: true,
-
       calle: orderData.calle,
       numero: orderData.numero,
       codigo_postal: orderData.codigo_postal,
-      provincia: orderData.provincia,
-      localidad: orderData.localidad,
       paquetes: orderData.paquetes,
+      shippingChoice,
     });
-    await OrderModel.findByIdAndUpdate(orderId, {
-      "enviopack.pedidoId": pedido.id,
-      "enviopack.envioId": envio.id,
-    });
+
     res.json({ pedido, envio });
-    console.log(
-      "=== SHIPPING CHOICE RECIBIDO ===",
-      JSON.stringify(shippingChoice, null, 2),
-    );
   } catch (err) {
     console.error("Enviopack error:", err.response?.data || err.message);
     res.status(500).json({ error: "No se pudo confirmar el envío" });
