@@ -38,6 +38,18 @@ export const createOrder = async (req, res) => {
       currency_id: "ARS",
     }));
 
+    // 👇 Sumamos el envío como item para que Mercado Pago cobre el monto real
+    const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
+
+    if (shippingCost > 0) {
+      items.push({
+        title: `Envío - ${shipping.shippingChoice?.correo || ""} (${shipping.shippingChoice?.servicio || ""})`,
+        quantity: 1,
+        unit_price: shippingCost,
+        currency_id: "ARS",
+      });
+    }
+
     const body = {
       items,
       payer: { name: payer.name, surname: payer.surname, email: payer.email },
@@ -90,16 +102,45 @@ export const mercadoPagoWebhook = async (req, res) => {
         const existingOrder = await OrderModel.findOne({ paymentId: payment.id });
         if (existingOrder) return res.sendStatus(200);
 
-        const total = cart.products.reduce(
-          (acc, item) => acc + item.product.precio * item.quantity,
+        // 👇 Parseamos el shipping una sola vez, arriba, para reusarlo
+        const shipping = payment.metadata?.shipping
+          ? JSON.parse(payment.metadata.shipping)
+          : null;
+
+        const shippingCost = Number(shipping?.shippingChoice?.valor) || 0;
+
+        // 👇 Fix: usamos precioConIva (consistente con createOrder,
+        // antes usaba "precio" que da un total distinto al cobrado)
+        const productsTotal = cart.products.reduce(
+          (acc, item) => acc + item.product.precioConIva * item.quantity,
           0
         );
+
+        const total = productsTotal + shippingCost;
 
         const newOrder = new OrderModel({
           user: cart.user,
           cart: cart._id,
           paymentId: payment.id,
           products: cart.products,
+          subtotal: productsTotal,
+          shippingCost,
+          shippingMethod: shipping?.shippingChoice
+            ? {
+                tipo: shipping.shippingChoice.tipo || null,
+                correo: shipping.shippingChoice.correo || null,
+                servicio: shipping.shippingChoice.servicio || null,
+              }
+            : null,
+          shippingAddress: shipping
+            ? {
+                calle: shipping.calle,
+                numero: shipping.numero,
+                ciudad: shipping.localidad,
+                provincia: shipping.provincia,
+                codigoPostal: shipping.codigo_postal,
+              }
+            : null,
           total,
           paymentMethod: "mercadopago",
           status: "pagado",
@@ -109,7 +150,7 @@ export const mercadoPagoWebhook = async (req, res) => {
         cart.products = [];
         await cart.save();
 
-        // 📧 Email de confirmación (fix: itemsForEmail ahora sí existe)
+        // 📧 Email de confirmación
         const itemsForEmail = newOrder.products.map((item) => ({
           product: item.product,
           quantity: item.quantity,
@@ -125,10 +166,9 @@ export const mercadoPagoWebhook = async (req, res) => {
           console.error("Error enviando email de confirmación:", err);
         });
 
-        // 🚚 Envío en Enviopack (fix: antes no se disparaba nunca para MP)
-        if (payment.metadata?.shipping) {
+        // 🚚 Envío en Enviopack
+        if (shipping) {
           try {
-            const shipping = JSON.parse(payment.metadata.shipping);
             await createEnviopackShipment({
               orderId: newOrder._id,
               nombre: shipping.nombre,

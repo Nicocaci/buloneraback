@@ -11,7 +11,6 @@ const orderSchema = new mongoose.Schema({
     ref: "carts",
   },
 
-  // 👇 agregar esto
   paymentId: {
     type: String,
     unique: true,
@@ -21,7 +20,7 @@ const orderSchema = new mongoose.Schema({
     pedidoId: { type: Number },
     envioId: { type: Number },
     trackingNumber: { type: String, default: null },
-    condicion: { type: String, default: null }, // código crudo, útil para debug
+    condicion: { type: String, default: null },
     necesitaAtencion: { type: Boolean, default: false },
   },
   products: [
@@ -33,6 +32,14 @@ const orderSchema = new mongoose.Schema({
       quantity: { type: Number, required: true },
     },
   ],
+
+  subtotal: { type: Number, default: 0 },
+  shippingCost: { type: Number, default: 0 },
+  shippingMethod: {
+    tipo: { type: String, default: null },
+    correo: { type: String, default: null },
+    servicio: { type: String, default: null },
+  },
 
   total: { type: Number, required: true },
 
@@ -46,8 +53,17 @@ const orderSchema = new mongoose.Schema({
 
   paymentMethod: {
     type: String,
-    enum: ["mercadopago", "efectivo"],
+    enum: ["mercadopago"],
     required: true,
+  },
+
+  shippingAddress: {
+    calle: { type: String },
+    numero: { type: String },
+    ciudad: { type: String },
+    provincia: { type: String },
+    codigoPostal: { type: String },
+    notas: { type: String, default: "" },
   },
 });
 
