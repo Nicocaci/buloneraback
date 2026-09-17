@@ -58,6 +58,10 @@ class ProductController {
         iva,
         stock,
         estado,
+        peso,
+        alto,
+        ancho,
+        largo
       } = req.body;
 
       if (!item || !descripcion || !categoria || !precio || !sku) {
@@ -99,6 +103,10 @@ class ProductController {
         stock: Number(stock),
         estado,
         oferta,
+        peso: Number(peso || 0),
+        alto: Number(alto || 0),
+        ancho: Number(ancho || 0),
+        largo: Number(largo || 0),
         imagen: imagenes,
       });
 
