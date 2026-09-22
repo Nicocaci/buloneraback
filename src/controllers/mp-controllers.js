@@ -7,6 +7,7 @@ import {
 import { sendOrderConfirmationEmail } from "../service/order-email-service.js";
 import { createEnviopackShipment } from "../service/enviopack/order-shipping-service.js";
 import OrderModel from "../dao/models/order-model.js";
+import OrderService from "../service/order-service.js";
 import CartModel from "../dao/models/cart-model.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -125,11 +126,11 @@ export const mercadoPagoWebhook = async (req, res) => {
 
         const total = productsTotal + shippingCost;
 
-        const newOrder = new OrderModel({
+        const newOrder = await OrderService.createOrder({
           user: cart.user,
           cart: cart._id,
           paymentId: payment.id,
-          products: cart.products,
+          products: cart.products, // OrderService espera { product, quantity } por item
           subtotal: productsTotal,
           shippingCost,
           shippingMethod: shipping?.shippingChoice
