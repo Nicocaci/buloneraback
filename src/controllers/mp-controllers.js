@@ -25,7 +25,9 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ error: "Carrito vacío o inválido" });
     }
     if (!payer || !payer.email) {
-      return res.status(400).json({ error: "Email del pagador es obligatorio" });
+      return res
+        .status(400)
+        .json({ error: "Email del pagador es obligatorio" });
     }
     if (!shipping || !shipping.shippingChoice) {
       return res.status(400).json({ error: "Datos de envío obligatorios" });
@@ -38,8 +40,9 @@ export const createOrder = async (req, res) => {
       currency_id: "ARS",
     }));
 
-    // 👇 Sumamos el envío como item para que Mercado Pago cobre el monto real
-    const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
+    // TEMP - PRUEBA SIN COSTO DE ENVÍO - REVERTIR DESPUÉS
+    // const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
+    const shippingCost = 0;
 
     if (shippingCost > 0) {
       items.push({
@@ -65,7 +68,8 @@ export const createOrder = async (req, res) => {
         // de objetos anidados en metadata para todos los campos
         shipping: JSON.stringify(shipping),
       },
-      notification_url: "https://buloneraback-production.up.railway.app/api/mp/webhook",
+      notification_url:
+        "https://buloneraback-production.up.railway.app/api/mp/webhook",
       back_urls: {
         success: "https://www.buloneraeltriangulo.com/gracias",
         failure: "https://www.buloneraeltriangulo.com/error",
@@ -96,10 +100,13 @@ export const mercadoPagoWebhook = async (req, res) => {
         const cartId = payment.metadata?.cart_id || payment.external_reference;
         if (!cartId) return res.sendStatus(200);
 
-        const cart = await CartModel.findById(cartId).populate("products.product");
+        const cart =
+          await CartModel.findById(cartId).populate("products.product");
         if (!cart) return res.sendStatus(200);
 
-        const existingOrder = await OrderModel.findOne({ paymentId: payment.id });
+        const existingOrder = await OrderModel.findOne({
+          paymentId: payment.id,
+        });
         if (existingOrder) return res.sendStatus(200);
 
         // 👇 Parseamos el shipping una sola vez, arriba, para reusarlo
@@ -113,7 +120,7 @@ export const mercadoPagoWebhook = async (req, res) => {
         // antes usaba "precio" que da un total distinto al cobrado)
         const productsTotal = cart.products.reduce(
           (acc, item) => acc + item.product.precioConIva * item.quantity,
-          0
+          0,
         );
 
         const total = productsTotal + shippingCost;
@@ -187,14 +194,14 @@ export const mercadoPagoWebhook = async (req, res) => {
           } catch (err) {
             console.error(
               "Error creando envío Enviopack:",
-              err.response?.data || err.message
+              err.response?.data || err.message,
             );
             // no relanzamos: el pago y la orden ya están confirmados,
             // esto se puede reintentar/resolver a mano si falla
           }
         } else {
           console.warn(
-            `Orden ${newOrder._id}: no llegó metadata.shipping, no se generó envío Enviopack`
+            `Orden ${newOrder._id}: no llegó metadata.shipping, no se generó envío Enviopack`,
           );
         }
       }
