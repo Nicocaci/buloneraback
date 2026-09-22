@@ -1,8 +1,8 @@
 import OrderDAO from "../dao/order-dao.js";
 
 class OrderRepository {
-  async createOrder(data) {
-    return await OrderDAO.createOrder(data);
+  async createOrder(data, options) {
+    return await OrderDAO.createOrder(data, options);
   }
   async getOrders() {
     return await OrderDAO.getOrders();

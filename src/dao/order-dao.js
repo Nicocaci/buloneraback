@@ -1,14 +1,14 @@
 import OrderModel from './models/order-model.js'
 
 class OrderDAO {
-  async createOrder(data) {
-    try {
-      const newOrder = await OrderModel.create(data);
-      return newOrder;
-    } catch (error) {
-      throw error;
-    }
+async createOrder(data, options) {
+  try {
+    const newOrder = await OrderModel.create([data], options); // create([data]) es la forma que acepta session
+    return newOrder[0];
+  } catch (error) {
+    throw error;
   }
+}
   async getOrders() {
     try {
       const orders = await OrderModel.find();

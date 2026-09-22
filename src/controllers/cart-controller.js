@@ -1,4 +1,5 @@
 import CartService from "../service/cart-service.js";
+import ProductModel from "../dao/models/product-model.js";
 
 const mapCartErrorToResponse = (res, error) => {
   if (error?.message === "Carrito no encontrado") {
@@ -8,6 +9,12 @@ const mapCartErrorToResponse = (res, error) => {
     return res
       .status(404)
       .json({ message: "Producto no encontrado en el carrito" });
+  }
+  if (error?.message === "Producto no encontrado") {
+    return res.status(404).json({ message: "Producto no encontrado" });
+  }
+  if (error?.message?.startsWith("Solo hay")) {
+    return res.status(400).json({ message: error.message });
   }
   return res
     .status(500)
@@ -45,23 +52,42 @@ class CartController {
       mapCartErrorToResponse(res, error);
     }
   }
-  async addProductToCart(req, res) {
-    const cid = req.params.cid;
-    const pid = req.params.pid;
-    const quantity = req.body.quantity || 1;
-    if (!cid || !pid) {
-      return res.status(400).json({
-        message: "Se requiere el identificador del carrito y del producto",
-      });
-    }
-    if (Number.isNaN(Number(quantity)) || Number(quantity) <= 0) {
-      return res
-        .status(400)
-        .json({ message: "La cantidad debe ser un número mayor que cero" });
-    }
+  async addProduct(req, res) {
     try {
-      const addProduct = await CartService.addProductToCart(cid, pid, quantity);
-      res.status(200).json(addProduct);
+      const userId = req.user.id;
+      const { pid } = req.params;
+      const quantity = Number(req.body.quantity) || 1;
+
+      const product = await ProductModel.findById(pid);
+      if (!product) {
+        return res.status(404).json({ message: "Producto no encontrado" });
+      }
+
+      let cart = await CartService.getCartByUserId(userId);
+      if (!cart) {
+        cart = await CartService.createCartForUser(userId);
+      }
+
+      const existingProduct = cart.products.find(
+        (p) => p.product._id.toString() === pid,
+      );
+
+      const cantidadFinal = (existingProduct?.quantity || 0) + quantity;
+
+      if (cantidadFinal > product.stock) {
+        return res.status(400).json({
+          message: `Solo hay ${product.stock} unidades disponibles`,
+        });
+      }
+
+      if (existingProduct) {
+        existingProduct.quantity = cantidadFinal;
+      } else {
+        cart.products.push({ product: pid, quantity });
+      }
+
+      const updatedCart = await CartService.saveCart(cart);
+      res.status(200).json(updatedCart);
     } catch (error) {
       mapCartErrorToResponse(res, error);
     }
@@ -171,8 +197,12 @@ class CartController {
       const { pid } = req.params;
       const quantity = Number(req.body.quantity) || 1;
 
-      let cart = await CartService.getCartByUserId(userId);
+      const product = await ProductModel.findById(pid);
+      if (!product) {
+        return res.status(404).json({ message: "Producto no encontrado" });
+      }
 
+      let cart = await CartService.getCartByUserId(userId);
       if (!cart) {
         cart = await CartService.createCartForUser(userId);
       }
@@ -181,14 +211,21 @@ class CartController {
         (p) => p.product._id.toString() === pid,
       );
 
+      const cantidadFinal = (existingProduct?.quantity || 0) + quantity;
+
+      if (cantidadFinal > product.stock) {
+        return res.status(400).json({
+          message: `Solo hay ${product.stock} unidades disponibles`,
+        });
+      }
+
       if (existingProduct) {
-        existingProduct.quantity += quantity;
+        existingProduct.quantity = cantidadFinal;
       } else {
         cart.products.push({ product: pid, quantity });
       }
 
       const updatedCart = await CartService.saveCart(cart);
-
       res.status(200).json(updatedCart);
     } catch (error) {
       mapCartErrorToResponse(res, error);
@@ -202,14 +239,23 @@ class CartController {
       if (!quantity || quantity < 1) {
         return res.status(400).json({ message: "Cantidad inválida" });
       }
+      const product = await ProductModel.findById(pid);
+      if (!product) {
+        return res.status(404).json({ message: "Producto no encontrado" });
+      }
+      if (quantity > product.stock) {
+        return res
+          .status(400)
+          .json({ message: `Solo hay ${product.stock} unidades disponibles` });
+      }
       const cart = await CartService.getCartByUserId(userId);
       if (!cart) {
         return res.status(404).json({ message: "Carrito no encontrado" });
       }
       // 🔥 Buscar producto (compatible con populate y sin populate)
       const productIndex = cart.products.findIndex((p) => {
-        const productId = p.product?._id 
-          ? p.product._id.toString() 
+        const productId = p.product?._id
+          ? p.product._id.toString()
           : p.product?.toString();
         // Normalizar ambos a string para comparación
         return productId === pid || productId === String(pid);

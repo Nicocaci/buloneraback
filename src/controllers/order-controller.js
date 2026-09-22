@@ -1,23 +1,21 @@
 import OrderService from "../service/order-service.js";
 
 class OrderController {
-  async createOrder(req, res) {
-    try {
-      const orderData = {
-        ...req.body,
-        user: req.user.id,
-      };
-
-      const newOrder = await OrderService.createOrder(orderData);
-
-      res.status(201).json(newOrder);
-    } catch (error) {
-      res.status(500).json({
-        message: "Error al crear la orden",
-        error: error.message,
-      });
+async createOrder(req, res) {
+  try {
+    const orderData = { ...req.body, user: req.user.id };
+    const newOrder = await OrderService.createOrder(orderData);
+    res.status(201).json(newOrder);
+  } catch (error) {
+    if (error?.message?.startsWith("Stock insuficiente")) {
+      return res.status(400).json({ message: error.message });
     }
+    res.status(500).json({
+      message: "Error al crear la orden",
+      error: error.message,
+    });
   }
+}
   async getOrders(req, res) {
     try {
       const orders = await OrderService.getOrders();

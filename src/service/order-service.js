@@ -1,9 +1,42 @@
 
 import OrderRepository from "../repository/order-repository.js";
+import ProductModel from "../dao/models/product-model.js";
+import mongoose from "mongoose";
 
 class OrderService {
   async createOrder(data) {
-    return await OrderRepository.createOrder(data);
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
+
+      // 1. Validar y descontar stock de cada producto, de forma atómica
+      for (const item of data.products) {
+        const result = await ProductModel.updateOne(
+          { _id: item.product, stock: { $gte: item.quantity } },
+          { $inc: { stock: -item.quantity } },
+          { session },
+        );
+
+        if (result.modifiedCount === 0) {
+          const product = await ProductModel.findById(item.product);
+          const disponible = product ? product.stock : 0;
+          throw new Error(
+            `Stock insuficiente para "${product?.item || item.product}". Disponible: ${disponible}`,
+          );
+        }
+      }
+
+      // 2. Recién ahora crear la orden
+      const newOrder = await OrderRepository.createOrder(data, { session });
+
+      await session.commitTransaction();
+      return newOrder;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
   async getOrders() {
     return await OrderRepository.getOrders();
