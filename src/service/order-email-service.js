@@ -45,7 +45,7 @@ function buildOrderEmailHtml({
       <td style="padding:12px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};text-align:right;font-weight:600;">
         $${(item.product.precio * item.quantity).toFixed(2)}
       </td>
-    </tr>`
+    </tr>`,
     )
     .join("");
 
@@ -164,8 +164,8 @@ function buildOrderEmailHtml({
 
           <!-- CTA -->
           <tr><td align="center" style="padding:26px 32px 8px 32px;">
-            <a href="${STORE_URL}/pedidos/${orderId}" style="display:inline-block;background-color:${BRAND.red};color:#ffffff;font-size:14px;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none;">
-              Ver mi pedido
+            <a href="${STORE_URL}/gracias" style="display:inline-block;background-color:${BRAND.red};color:#ffffff;font-size:14px;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none;">
+              Volver a la tienda
             </a>
           </td></tr>
 
@@ -212,6 +212,131 @@ export async function sendOrderConfirmationEmail({
       shippingMethod,
       shippingAddress,
       trackingUrl,
+    }),
+  });
+}
+function buildStoreNotificationHtml({
+  orderId,
+  items,
+  total,
+  customerName,
+  customerEmail,
+  customerPhone,
+  shippingAddress,
+  shippingMethod,
+  paymentMethod = "Mercado Pago",
+  orderDate = new Date().toLocaleDateString("es-AR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }),
+}) {
+  const itemsHtml = items
+    .map(
+      (item) => `
+    <tr>
+      <td style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};">
+        ${item.product.item}
+      </td>
+      <td style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;text-align:right;">
+        ${item.quantity}
+      </td>
+      <td style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;text-align:right;font-weight:600;">
+        $${(item.product.precio * item.quantity).toFixed(2)}
+      </td>
+    </tr>`,
+    )
+    .join("");
+
+  return `
+  <div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;padding:20px;background:#f2f2f2;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr><td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;">
+
+          <tr><td style="background-color:${BRAND.black};padding:18px 24px;">
+            <span style="color:#fff;font-size:15px;font-weight:700;">Nueva venta — Pedido #${orderId}</span>
+          </td></tr>
+
+          <tr><td style="padding:20px 24px 0 24px;">
+            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
+              Comprador
+            </div>
+            <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
+              ${customerName || "-"}<br>
+              ${customerEmail || "-"}<br>
+              ${customerPhone || "-"}
+            </p>
+          </td></tr>
+
+          <tr><td style="padding:18px 24px 0 24px;">
+            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
+              Envío
+            </div>
+            <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
+              ${shippingMethod || "-"}<br>
+              ${shippingAddress || "Sin dirección"}
+            </p>
+          </td></tr>
+
+          <tr><td style="padding:18px 24px 0 24px;">
+            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
+              Detalle
+            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr style="background-color:${BRAND.black};">
+                <th style="padding:8px 10px;text-align:left;color:#fff;font-size:11px;">Producto</th>
+                <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px;">Cant.</th>
+                <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px;">Subtotal</th>
+              </tr>
+              ${itemsHtml}
+            </table>
+          </td></tr>
+
+          <tr><td style="padding:14px 24px 0 24px;">
+            <p style="text-align:right;font-size:16px;font-weight:700;color:${BRAND.black};border-top:2px solid ${BRAND.black};padding-top:10px;margin:0;">
+              Total: $${total.toFixed(2)}
+            </p>
+            <p style="text-align:right;font-size:12px;color:${BRAND.gray};margin:6px 0 0 0;">
+              Pago: ${paymentMethod} · ${orderDate}
+            </p>
+          </td></tr>
+
+          <tr><td style="padding:24px;"></td></tr>
+
+        </table>
+      </td></tr>
+    </table>
+  </div>`;
+}
+
+export async function sendStoreNotificationEmail({
+  orderId,
+  items,
+  total,
+  customerName,
+  customerEmail,
+  customerPhone,
+  shippingAddress,
+  shippingMethod,
+  paymentMethod,
+}) {
+  await resend.emails.send({
+    from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
+    to: process.env.STORE_NOTIFICATION_EMAIL,
+    subject: `🛒 Nueva venta #${orderId} — ${customerName || "Cliente"}`,
+    html: buildStoreNotificationHtml({
+      orderId,
+      items,
+      total,
+      customerName,
+      customerEmail,
+      customerPhone,
+      shippingAddress,
+      shippingMethod,
+      paymentMethod,
     }),
   });
 }

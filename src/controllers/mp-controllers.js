@@ -4,7 +4,10 @@ import {
   Payment,
   PaymentMethod,
 } from "mercadopago";
-import { sendOrderConfirmationEmail } from "../service/order-email-service.js";
+import {
+  sendOrderConfirmationEmail,
+  sendStoreNotificationEmail,
+} from "../service/order-email-service.js";
 import { createEnviopackShipment } from "../service/enviopack/order-shipping-service.js";
 import OrderModel from "../dao/models/order-model.js";
 import OrderService from "../service/order-service.js";
@@ -16,6 +19,12 @@ dotenv.config();
 const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
+
+// 🔴 CONFIRMAR: este es el valor que devuelve tu backend de envíos
+// para la opción de "retiro local". Lo saqué de tu chequeo de Enviopack
+// (shippingChoice?.tipo !== "retiro_local"), pero no vi useShippingOptions.js
+// para confirmarlo. Si el valor real es otro (ej: "retiro"), cambiar solo acá.
+const TIPO_RETIRO_LOCAL = "retiro_local";
 
 export const createOrder = async (req, res) => {
   try {
@@ -69,8 +78,7 @@ export const createOrder = async (req, res) => {
     // Un invitado no tiene cart._id (viene de localStorage)
     const isGuest = !cart._id;
     const externalReference =
-      cart._id ||
-      `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      cart._id || `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const body = {
       items,
@@ -98,8 +106,8 @@ export const createOrder = async (req, res) => {
         "https://buloneraback-production.up.railway.app/api/mp/webhook",
       back_urls: {
         success: "https://www.buloneraeltriangulo.com/gracias",
-        failure: "https://www.buloneraeltriangulo.com/error",
-        pending: "https://www.buloneraeltriangulo.com/pendiente",
+        failure: "https://www.buloneraeltriangulo.com",
+        pending: "https://www.buloneraeltriangulo.com",
       },
       auto_return: "approved",
     };
@@ -178,6 +186,10 @@ export const mercadoPagoWebhook = async (req, res) => {
 
         const newOrder = await OrderService.createOrder({
           user: userId || undefined,
+          // ⚠️ NOTA: order-model.js todavía NO tiene el campo "guestEmail" en su
+          // schema. Mongoose lo va a ignorar silenciosamente (no da error, pero
+          // tampoco lo guarda) hasta que lo agreguemos ahí. Avisame y te paso
+          // el cambio para ese archivo.
           guestEmail: isGuest ? payment.payer?.email : undefined,
           cart: cartDoc?._id,
           paymentId: payment.id,
@@ -219,17 +231,49 @@ export const mercadoPagoWebhook = async (req, res) => {
           quantity: item.quantity,
         }));
 
+        const esRetiroLocal =
+          shipping?.shippingChoice?.tipo === TIPO_RETIRO_LOCAL;
+
+        const shippingMethodLabel = shipping?.shippingChoice
+          ? esRetiroLocal
+            ? "Retiro local"
+            : `${shipping.shippingChoice.tipo === "sucursal" ? "A sucursal" : "A domicilio"} — ${shipping.shippingChoice.correo || ""} (${shipping.shippingChoice.servicio || ""})`
+          : undefined;
+
+        const shippingAddressLabel = shipping
+          ? `${shipping.calle} ${shipping.numero}, ${shipping.localidad}, ${shipping.provincia} (CP ${shipping.codigo_postal})`
+          : undefined;
+
+        // 📧 Mail al comprador
         sendOrderConfirmationEmail({
           to: payment.payer?.email,
           orderId: newOrder._id,
           items: itemsForEmail,
           total,
           customerName: payment.payer?.first_name,
+          shippingMethod: shippingMethodLabel,
+          shippingAddress: shippingAddressLabel,
         }).catch((err) => {
           console.error("Error enviando email de confirmación:", err);
         });
 
-        if (shipping && shipping.shippingChoice?.tipo !== "retiro_local") {
+        // 📧 Notificación interna a la bulonera
+        sendStoreNotificationEmail({
+          orderId: newOrder._id,
+          items: itemsForEmail,
+          total,
+          customerName:
+            `${shipping?.nombre || payment.payer?.first_name || ""} ${shipping?.apellido || ""}`.trim(),
+          customerEmail: payment.payer?.email,
+          shippingAddress: shippingAddressLabel,
+          shippingMethod: shippingMethodLabel,
+          paymentMethod: "Mercado Pago",
+        }).catch((err) => {
+          console.error("Error enviando notificación a la tienda:", err);
+        });
+
+        // 🚚 Envío en Enviopack (se omite si es retiro local)
+        if (shipping && !esRetiroLocal) {
           try {
             await createEnviopackShipment({
               orderId: newOrder._id,
@@ -251,7 +295,7 @@ export const mercadoPagoWebhook = async (req, res) => {
               err.response?.data || err.message,
             );
           }
-        } else {
+        } else if (!shipping) {
           console.warn(
             `Orden ${newOrder._id}: no llegó metadata.shipping, no se generó envío Enviopack`,
           );
