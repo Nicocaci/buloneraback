@@ -265,6 +265,7 @@ export const mercadoPagoWebhook = async (req, res) => {
           customerName:
             `${shipping?.nombre || payment.payer?.first_name || ""} ${shipping?.apellido || ""}`.trim(),
           customerEmail: payment.payer?.email,
+          customerPhone: shipping?.telefono || payment.payer?.phone?.number || "",
           shippingAddress: shippingAddressLabel,
           shippingMethod: shippingMethodLabel,
           paymentMethod: "Mercado Pago",
