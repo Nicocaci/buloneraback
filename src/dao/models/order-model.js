@@ -5,7 +5,10 @@ const orderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "users",
   },
-
+  guestEmail: {
+    type: String,
+    default: null,
+  },
   cart: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "carts",

@@ -9,6 +9,7 @@ import { createEnviopackShipment } from "../service/enviopack/order-shipping-ser
 import OrderModel from "../dao/models/order-model.js";
 import OrderService from "../service/order-service.js";
 import CartModel from "../dao/models/cart-model.js";
+import ProductModel from "../dao/models/product-model.js";
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -34,6 +35,17 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ error: "Datos de envío obligatorios" });
     }
 
+    // Validar stock ANTES de generar el cobro
+    for (const item of cart.products) {
+      const productId = item.product?._id || item.product;
+      const productDoc = await ProductModel.findById(productId);
+      if (!productDoc || item.quantity > productDoc.stock) {
+        return res.status(400).json({
+          error: `Stock insuficiente para "${productDoc?.item || productId}"`,
+        });
+      }
+    }
+
     const items = cart.products.map((item) => ({
       title: item.product.item,
       quantity: Number(item.quantity),
@@ -54,6 +66,12 @@ export const createOrder = async (req, res) => {
       });
     }
 
+    // Un invitado no tiene cart._id (viene de localStorage)
+    const isGuest = !cart._id;
+    const externalReference =
+      cart._id ||
+      `guest-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
     const body = {
       items,
       payer: { name: payer.name, surname: payer.surname, email: payer.email },
@@ -62,11 +80,18 @@ export const createOrder = async (req, res) => {
         excluded_payment_types: [{ id: "ticket" }],
         excluded_payment_methods: [],
       },
-      external_reference: cart._id,
+      external_reference: externalReference,
       metadata: {
-        cart_id: cart._id,
-        // 👇 lo guardamos como JSON string: MP no garantiza soporte
-        // de objetos anidados en metadata para todos los campos
+        cart_id: cart._id || undefined,
+        guest: isGuest,
+        products: isGuest
+          ? JSON.stringify(
+              cart.products.map((item) => ({
+                product: item.product?._id || item.product,
+                quantity: item.quantity,
+              })),
+            )
+          : undefined,
         shipping: JSON.stringify(shipping),
       },
       notification_url:
@@ -98,39 +123,68 @@ export const mercadoPagoWebhook = async (req, res) => {
       const payment = await new Payment(client).get({ id: paymentId });
 
       if (payment.status === "approved") {
-        const cartId = payment.metadata?.cart_id || payment.external_reference;
-        if (!cartId) return res.sendStatus(200);
-
-        const cart =
-          await CartModel.findById(cartId).populate("products.product");
-        if (!cart) return res.sendStatus(200);
-
         const existingOrder = await OrderModel.findOne({
           paymentId: payment.id,
         });
         if (existingOrder) return res.sendStatus(200);
 
-        // 👇 Parseamos el shipping una sola vez, arriba, para reusarlo
         const shipping = payment.metadata?.shipping
           ? JSON.parse(payment.metadata.shipping)
           : null;
-
         const shippingCost = Number(shipping?.shippingChoice?.valor) || 0;
 
-        // 👇 Fix: usamos precioConIva (consistente con createOrder,
-        // antes usaba "precio" que da un total distinto al cobrado)
-        const productsTotal = cart.products.reduce(
+        const isGuest =
+          payment.metadata?.guest === "true" ||
+          payment.metadata?.guest === true;
+
+        let productsForOrder;
+        let cartDoc = null;
+        let userId = null;
+
+        if (isGuest) {
+          const guestItems = payment.metadata?.products
+            ? JSON.parse(payment.metadata.products)
+            : [];
+
+          const productIds = guestItems.map((i) => i.product);
+          const productDocs = await ProductModel.find({
+            _id: { $in: productIds },
+          });
+
+          productsForOrder = guestItems.map((gi) => {
+            const doc = productDocs.find(
+              (d) => d._id.toString() === gi.product,
+            );
+            return { product: doc, quantity: gi.quantity };
+          });
+        } else {
+          const cartId =
+            payment.metadata?.cart_id || payment.external_reference;
+          if (!cartId) return res.sendStatus(200);
+
+          cartDoc =
+            await CartModel.findById(cartId).populate("products.product");
+          if (!cartDoc) return res.sendStatus(200);
+
+          productsForOrder = cartDoc.products;
+          userId = cartDoc.user;
+        }
+
+        const productsTotal = productsForOrder.reduce(
           (acc, item) => acc + item.product.precioConIva * item.quantity,
           0,
         );
-
         const total = productsTotal + shippingCost;
 
         const newOrder = await OrderService.createOrder({
-          user: cart.user,
-          cart: cart._id,
+          user: userId || undefined,
+          guestEmail: isGuest ? payment.payer?.email : undefined,
+          cart: cartDoc?._id,
           paymentId: payment.id,
-          products: cart.products, // OrderService espera { product, quantity } por item
+          products: productsForOrder.map((item) => ({
+            product: item.product._id,
+            quantity: item.quantity,
+          })),
           subtotal: productsTotal,
           shippingCost,
           shippingMethod: shipping?.shippingChoice
@@ -153,13 +207,14 @@ export const mercadoPagoWebhook = async (req, res) => {
           paymentMethod: "mercadopago",
           status: "pagado",
         });
-        await newOrder.save();
 
-        cart.products = [];
-        await cart.save();
+        // Solo vaciamos el carrito si existía uno de Mongo (usuario logueado)
+        if (cartDoc) {
+          cartDoc.products = [];
+          await cartDoc.save();
+        }
 
-        // 📧 Email de confirmación
-        const itemsForEmail = newOrder.products.map((item) => ({
+        const itemsForEmail = productsForOrder.map((item) => ({
           product: item.product,
           quantity: item.quantity,
         }));
@@ -174,8 +229,7 @@ export const mercadoPagoWebhook = async (req, res) => {
           console.error("Error enviando email de confirmación:", err);
         });
 
-        // 🚚 Envío en Enviopack
-        if (shipping) {
+        if (shipping && shipping.shippingChoice?.tipo !== "retiro_local") {
           try {
             await createEnviopackShipment({
               orderId: newOrder._id,
@@ -191,14 +245,11 @@ export const mercadoPagoWebhook = async (req, res) => {
               paquetes: shipping.paquetes,
               shippingChoice: shipping.shippingChoice,
             });
-            console.log("Envío Enviopack creado para orden:", newOrder._id);
           } catch (err) {
             console.error(
               "Error creando envío Enviopack:",
               err.response?.data || err.message,
             );
-            // no relanzamos: el pago y la orden ya están confirmados,
-            // esto se puede reintentar/resolver a mano si falla
           }
         } else {
           console.warn(
