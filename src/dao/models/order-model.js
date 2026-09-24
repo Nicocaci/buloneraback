@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import CounterModel from "./Counter.js";
 
 const orderSchema = new mongoose.Schema({
   user: {
@@ -68,8 +69,19 @@ const orderSchema = new mongoose.Schema({
     codigoPostal: { type: String },
     notas: { type: String, default: "" },
   },
+  orderNumber: { type: Number, unique: true },
 });
-
+orderSchema.pre("save", async function (next) {
+  if (this.isNew && this.orderNumber == null) {
+    const counter = await CounterModel.findOneAndUpdate(
+      { _id: "orderNumber" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true },
+    );
+    this.orderNumber = counter.seq;
+  }
+  next();
+});
 const OrderModel = mongoose.model("orders", orderSchema);
 
 export default OrderModel;

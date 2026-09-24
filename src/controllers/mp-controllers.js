@@ -63,8 +63,8 @@ export const createOrder = async (req, res) => {
     }));
 
     // TEMP - PRUEBA SIN COSTO DE ENVÍO - REVERTIR DESPUÉS
-    // const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
-    const shippingCost = 0;
+     const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
+    //const shippingCost = 0;
 
     if (shippingCost > 0) {
       items.push({
@@ -186,10 +186,6 @@ export const mercadoPagoWebhook = async (req, res) => {
 
         const newOrder = await OrderService.createOrder({
           user: userId || undefined,
-          // ⚠️ NOTA: order-model.js todavía NO tiene el campo "guestEmail" en su
-          // schema. Mongoose lo va a ignorar silenciosamente (no da error, pero
-          // tampoco lo guarda) hasta que lo agreguemos ahí. Avisame y te paso
-          // el cambio para ese archivo.
           guestEmail: isGuest ? payment.payer?.email : undefined,
           cart: cartDoc?._id,
           paymentId: payment.id,
@@ -247,7 +243,7 @@ export const mercadoPagoWebhook = async (req, res) => {
         // 📧 Mail al comprador
         sendOrderConfirmationEmail({
           to: payment.payer?.email,
-          orderId: newOrder._id,
+          orderId: newOrder.orderNumber,
           items: itemsForEmail,
           total,
           customerName: payment.payer?.first_name,
@@ -259,7 +255,7 @@ export const mercadoPagoWebhook = async (req, res) => {
 
         // 📧 Notificación interna a la bulonera
         sendStoreNotificationEmail({
-          orderId: newOrder._id,
+          orderId: newOrder.orderNumber,
           items: itemsForEmail,
           total,
           customerName:
