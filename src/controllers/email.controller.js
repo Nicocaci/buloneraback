@@ -1,4 +1,5 @@
-import { resend } from "../config/resend-client.js";
+import { sendQuoteEmail } from "../service/cotizacion-email-service.js";
+
 export const sendEmail = async (req, res) => {
   try {
     const { nombre, empresa, email, telefono, mensaje } = req.body;
@@ -15,18 +16,13 @@ export const sendEmail = async (req, res) => {
       content: file.buffer,
     }));
 
-    const response = await resend.emails.send({
-      from: "BULONERA EL TRIÁNGULO <contacto@buloneraeltriangulo.com>",
-      to: "eltrianguloventasonline@gmail.com",
-      subject: `SOLICITUD DE COTIZACIÓN ${nombre}`,
-      html: `
-        <p><strong>Nombre:</strong> ${nombre}</p>
-        <p><strong>Empresa:</strong> ${empresa}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Teléfono:</strong> ${telefono}</p>
-        <p><strong>Mensaje:</strong> ${mensaje}</p>
-      `,
-      attachments: attachments.length > 0 ? attachments : undefined,
+    await sendQuoteEmail({
+      nombre,
+      empresa,
+      email,
+      telefono,
+      mensaje,
+      attachments,
     });
 
     res.status(200).json({ message: "Email enviado correctamente" });

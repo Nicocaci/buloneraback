@@ -1,6 +1,6 @@
 import { resend } from "../config/resend-client.js";
 
-const BRAND = {
+export const BRAND = {
   black: "#1f1e25",
   red: "#ff0405",
   gray: "#4b4b52",
