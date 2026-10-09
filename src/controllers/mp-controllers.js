@@ -20,10 +20,6 @@ const client = new MercadoPagoConfig({
   accessToken: process.env.MP_ACCESS_TOKEN,
 });
 
-// 🔴 CONFIRMAR: este es el valor que devuelve tu backend de envíos
-// para la opción de "retiro local". Lo saqué de tu chequeo de Enviopack
-// (shippingChoice?.tipo !== "retiro_local"), pero no vi useShippingOptions.js
-// para confirmarlo. Si el valor real es otro (ej: "retiro"), cambiar solo acá.
 const TIPO_RETIRO_LOCAL = "retiro_local";
 
 export const createOrder = async (req, res) => {
@@ -62,8 +58,8 @@ export const createOrder = async (req, res) => {
       currency_id: "ARS",
     }));
 
-    // TEMP - PRUEBA SIN COSTO DE ENVÍO - REVERTIR DESPUÉS
-     const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
+  
+    const shippingCost = Number(shipping.shippingChoice?.valor) || 0;
     //const shippingCost = 0;
 
     if (shippingCost > 0) {
@@ -131,6 +127,27 @@ export const mercadoPagoWebhook = async (req, res) => {
       const payment = await new Payment(client).get({ id: paymentId });
 
       if (payment.status === "approved") {
+        console.log(
+          "WEBHOOK PAYMENT",
+          payment.id,
+          payment.date_approved,
+          payment.live_mode,
+        );
+
+        // Ignorar pagos de prueba (sandbox)
+        if (payment.live_mode === false) {
+          console.warn("Pago de prueba ignorado", payment.id);
+          return res.sendStatus(200);
+        }
+
+        // Ignorar pagos viejos (más de 48 hs desde que se aprobaron)
+        const aprobadoEn = payment.date_approved
+          ? new Date(payment.date_approved)
+          : null;
+        if (!aprobadoEn || (Date.now() - aprobadoEn.getTime()) / 36e5 > 48) {
+          console.warn("Pago viejo ignorado", payment.id);
+          return res.sendStatus(200);
+        }
         const existingOrder = await OrderModel.findOne({
           paymentId: payment.id,
         });
@@ -177,44 +194,61 @@ export const mercadoPagoWebhook = async (req, res) => {
           productsForOrder = cartDoc.products;
           userId = cartDoc.user;
         }
-
+        const productosValidos = (productsForOrder || []).filter(
+          (i) => i.product,
+        );
+        if (productosValidos.length === 0) {
+          console.warn("Pago sin productos, ignorado", payment.id);
+          return res.sendStatus(200);
+        }
+        productsForOrder = productosValidos;
         const productsTotal = productsForOrder.reduce(
           (acc, item) => acc + item.product.precioConIva * item.quantity,
           0,
         );
         const total = productsTotal + shippingCost;
 
-        const newOrder = await OrderService.createOrder({
-          user: userId || undefined,
-          guestEmail: isGuest ? payment.payer?.email : undefined,
-          cart: cartDoc?._id,
-          paymentId: payment.id,
-          products: productsForOrder.map((item) => ({
-            product: item.product._id,
-            quantity: item.quantity,
-          })),
-          subtotal: productsTotal,
-          shippingCost,
-          shippingMethod: shipping?.shippingChoice
-            ? {
-                tipo: shipping.shippingChoice.tipo || null,
-                correo: shipping.shippingChoice.correo || null,
-                servicio: shipping.shippingChoice.servicio || null,
-              }
-            : null,
-          shippingAddress: shipping
-            ? {
-                calle: shipping.calle,
-                numero: shipping.numero,
-                ciudad: shipping.localidad,
-                provincia: shipping.provincia,
-                codigoPostal: shipping.codigo_postal,
-              }
-            : null,
-          total,
-          paymentMethod: "mercadopago",
-          status: "pagado",
-        });
+        let newOrder;
+        try {
+          newOrder = await OrderService.createOrder({
+            user: userId || undefined,
+            guestEmail: isGuest ? payment.payer?.email : undefined,
+            cart: cartDoc?._id,
+            paymentId: payment.id,
+            products: productsForOrder.map((item) => ({
+              product: item.product._id,
+              quantity: item.quantity,
+            })),
+            subtotal: productsTotal,
+            shippingCost,
+            shippingMethod: shipping?.shippingChoice
+              ? {
+                  tipo: shipping.shippingChoice.tipo || null,
+                  correo: shipping.shippingChoice.correo || null,
+                  servicio: shipping.shippingChoice.servicio || null,
+                }
+              : null,
+            shippingAddress: shipping
+              ? {
+                  calle: shipping.calle,
+                  numero: shipping.numero,
+                  ciudad: shipping.localidad,
+                  provincia: shipping.provincia,
+                  codigoPostal: shipping.codigo_postal,
+                }
+              : null,
+            total,
+            paymentMethod: "mercadopago",
+            status: "pagado",
+          });
+        } catch (err) {
+          // Código 11000 = paymentId duplicado: otra notificación ya creó esta orden
+          if (err.code === 11000) {
+            console.warn("Orden duplicada ignorada", payment.id);
+            return res.sendStatus(200);
+          }
+          throw err;
+        }
 
         // Solo vaciamos el carrito si existía uno de Mongo (usuario logueado)
         if (cartDoc) {
@@ -246,6 +280,7 @@ export const mercadoPagoWebhook = async (req, res) => {
           orderId: newOrder.orderNumber,
           items: itemsForEmail,
           total,
+          shippingCost,
           customerName: payment.payer?.first_name,
           shippingMethod: shippingMethodLabel,
           shippingAddress: shippingAddressLabel,
@@ -258,10 +293,12 @@ export const mercadoPagoWebhook = async (req, res) => {
           orderId: newOrder.orderNumber,
           items: itemsForEmail,
           total,
+          shippingCost,
           customerName:
             `${shipping?.nombre || payment.payer?.first_name || ""} ${shipping?.apellido || ""}`.trim(),
           customerEmail: payment.payer?.email,
-          customerPhone: shipping?.telefono || payment.payer?.phone?.number || "",
+          customerPhone:
+            shipping?.telefono || payment.payer?.phone?.number || "",
           shippingAddress: shippingAddressLabel,
           shippingMethod: shippingMethodLabel,
           paymentMethod: "Mercado Pago",

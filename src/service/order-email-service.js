@@ -18,6 +18,7 @@ function buildOrderEmailHtml({
   orderId,
   items,
   total,
+  shippingCost = 0,
   customerName,
   paymentMethod = "Mercado Pago",
   shippingMethod = "Enviopack",
@@ -29,6 +30,18 @@ function buildOrderEmailHtml({
     year: "numeric",
   }),
 }) {
+  const shippingRowHtml =
+    shippingCost > 0
+      ? `
+    <tr>
+      <td colspan="3" style="padding:12px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};font-weight:600;">
+        Envío
+      </td>
+      <td style="padding:12px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};text-align:right;font-weight:600;">
+        $${shippingCost.toFixed(2)}
+      </td>
+    </tr>`
+      : "";
   const itemsHtml = items
     .map(
       (item) => `
@@ -40,10 +53,10 @@ function buildOrderEmailHtml({
         ${item.quantity}
       </td>
       <td style="padding:12px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};text-align:right;">
-        $${item.product.precio.toFixed(2)}
+        $${item.product.precioConIva.toFixed(2)}
       </td>
       <td style="padding:12px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};text-align:right;font-weight:600;">
-        $${(item.product.precio * item.quantity).toFixed(2)}
+        $${(item.product.precioConIva * item.quantity).toFixed(2)}
       </td>
     </tr>`,
     )
@@ -148,6 +161,7 @@ function buildOrderEmailHtml({
                 <th style="padding:10px 12px;text-align:right;color:#fff;font-size:11px;text-transform:uppercase;">Subtotal</th>
               </tr>
               ${itemsHtml}
+              ${shippingRowHtml}
             </table>
           </td></tr>
 
@@ -193,6 +207,7 @@ export async function sendOrderConfirmationEmail({
   orderId,
   items,
   total,
+  shippingCost = 0,
   customerName,
   paymentMethod,
   shippingMethod,
@@ -207,6 +222,7 @@ export async function sendOrderConfirmationEmail({
       orderId,
       items,
       total,
+      shippingCost,
       customerName,
       paymentMethod,
       shippingMethod,
@@ -219,6 +235,7 @@ function buildStoreNotificationHtml({
   orderId,
   items,
   total,
+  shippingCost = 0,
   customerName,
   customerEmail,
   customerPhone,
@@ -233,6 +250,18 @@ function buildStoreNotificationHtml({
     minute: "2-digit",
   }),
 }) {
+  const shippingRowHtml =
+    shippingCost > 0
+      ? `
+    <tr>
+      <td colspan="2" style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};">
+        Envío
+      </td>
+      <td style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;text-align:right;font-weight:600;">
+        $${shippingCost.toFixed(2)}
+      </td>
+    </tr>`
+      : "";
   const itemsHtml = items
     .map(
       (item) => `
@@ -244,7 +273,7 @@ function buildStoreNotificationHtml({
         ${item.quantity}
       </td>
       <td style="padding:10px;border-bottom:1px solid ${BRAND.border};font-size:14px;text-align:right;font-weight:600;">
-        $${(item.product.precio * item.quantity).toFixed(2)}
+        $${(item.product.precioConIva * item.quantity).toFixed(2)}
       </td>
     </tr>`,
     )
@@ -292,6 +321,7 @@ function buildStoreNotificationHtml({
                 <th style="padding:8px 10px;text-align:right;color:#fff;font-size:11px;">Subtotal</th>
               </tr>
               ${itemsHtml}
+              ${shippingRowHtml}
             </table>
           </td></tr>
 
@@ -316,6 +346,7 @@ export async function sendStoreNotificationEmail({
   orderId,
   items,
   total,
+  shippingCost = 0,
   customerName,
   customerEmail,
   customerPhone,
@@ -331,6 +362,7 @@ export async function sendStoreNotificationEmail({
       orderId,
       items,
       total,
+      shippingCost,
       customerName,
       customerEmail,
       customerPhone,

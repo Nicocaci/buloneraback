@@ -2,20 +2,26 @@ import "dotenv/config";
 import {
   sendOrderConfirmationEmail,
   sendStoreNotificationEmail,
-} from "../service/order-email-service.js"; // 👈 ojo con la ruta relativa, ahora es ../ en vez de ./
+} from "../service/order-email-service.js";
 
 const items = [
   {
-    product: { item: "Tornillo Allen M8x40", precio: 150 },
+    product: { item: "Tornillo Allen M8x40", precioConIva: 181.5 },
     quantity: 10,
   },
   {
-    product: { item: "Arandela Presión 1/4", precio: 20 },
+    product: { item: "Arandela Presión 1/4", precioConIva: 24.2 },
     quantity: 50,
   },
 ];
 
-const total = items.reduce((acc, i) => acc + i.product.precio * i.quantity, 0);
+const shippingCost = 5000;
+
+const productsTotal = items.reduce(
+  (acc, i) => acc + i.product.precioConIva * i.quantity,
+  0,
+);
+const total = productsTotal + shippingCost;
 
 const shippingMethod = "A domicilio — Correo Argentino (Expreso)";
 const shippingAddress = "Av. Corrientes 1234, Rosario, Santa Fe (CP 2000)";
@@ -28,6 +34,7 @@ async function run() {
       orderId: "TEST123",
       items,
       total,
+      shippingCost,
       customerName: "Juan Pérez",
       shippingMethod,
       shippingAddress,
@@ -43,6 +50,7 @@ async function run() {
       orderId: "TEST123",
       items,
       total,
+      shippingCost,
       customerName: "Juan Pérez",
       customerEmail: "juan.perez@example.com",
       customerPhone: "+54 341 555-1234",
