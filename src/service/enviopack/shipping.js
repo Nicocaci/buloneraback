@@ -27,10 +27,10 @@ export function crearPedido(pedido) {
 }
 
 export function crearEnvio(envio) {
-  console.log("Payload enviado a /envios:", JSON.stringify(envio, null, 2));
   // envio: { pedido, direccion_envio, destinatario, modalidad, correo, servicio,
   //          confirmado, calle, numero, piso, depto, codigo_postal, provincia,
   //          localidad, paquetes: [{alto, ancho, largo, peso}] }
+  // (Antes se logueaba el payload completo, con nombre y dirección del cliente.)
   return enviopackRequest("POST", "/envios", { data: envio });
 }
 

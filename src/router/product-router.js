@@ -1,10 +1,19 @@
 import ProductController from "../controllers/product-controller.js";
 import express from "express";
-import upload from "../config/multerConfig.js";
+import authMiddleware from "../middlewares/auth-middleware.js";
+import { uploadProductImages } from "../config/multerConfig.js";
 
 const router = express.Router();
 
-// Subcategorías por categoría
+// La autenticación va antes de multer: así se rechaza a quien no es admin
+// sin recibir ni procesar los archivos.
+const adminOnly = authMiddleware(["admin"]);
+
+// ─────────────────────────────────────────
+// Públicas
+// ─────────────────────────────────────────
+
+// Categorías y subcategorías
 router.get("/categorias", ProductController.getCategories);
 router.get(
   "/subcategorias/:category",
@@ -17,36 +26,44 @@ router.get("/sku/:sku", ProductController.getProductBySku);
 // Productos en oferta vigente
 router.get("/ofertas", ProductController.getSales);
 
-// Limpiar ofertas vencidas (admin)
-router.post("/ofertas/limpiar", ProductController.limpiarOfertasVencidas);
-
-// Crear producto
-router.post("/", upload.array("imagen", 10), ProductController.createProduct);
-
 // Obtener productos (con todos los filtros + ?soloOfertas=true)
 router.get("/", ProductController.getProducts);
+
+// ─────────────────────────────────────────
+// Solo admin
+// ─────────────────────────────────────────
+
+// Limpiar ofertas vencidas
+router.post("/ofertas/limpiar", adminOnly, ProductController.limpiarOfertasVencidas);
+
+// Crear producto
+router.post(
+  "/",
+  adminOnly,
+  uploadProductImages.array("imagen", 10),
+  ProductController.createProduct,
+);
 
 // ─────────────────────────────────────────
 // Rutas dinámicas con :pid
 // ─────────────────────────────────────────
 
-// Obtener producto por ID
+// Obtener producto por ID (pública)
 router.get("/:pid", ProductController.getProductById);
 
 // Actualizar producto
 router.put(
   "/:pid",
-  upload.array("imagen", 10),
+  adminOnly,
+  uploadProductImages.array("imagen", 10),
   ProductController.updateProduct,
 );
 
 // Eliminar producto
-router.delete("/:pid", ProductController.deleteProduct);
+router.delete("/:pid", adminOnly, ProductController.deleteProduct);
 
-// Activar oferta de un producto
-router.patch("/:pid/oferta/activar", ProductController.activarOferta);
-
-// Desactivar oferta de un producto
-router.patch("/:pid/oferta/desactivar", ProductController.desactivarOferta);
+// Activar / desactivar oferta de un producto
+router.patch("/:pid/oferta/activar", adminOnly, ProductController.activarOferta);
+router.patch("/:pid/oferta/desactivar", adminOnly, ProductController.desactivarOferta);
 
 export default router;

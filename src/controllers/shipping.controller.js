@@ -1,12 +1,14 @@
 import {
-  cotizarADomicilio,
-  cotizarASucursal,
   cotizarCosto,
   getTracking,
   getEnvio,
   getCondiciones,
   getEtiqueta,
 } from "../service/enviopack/shipping.js";
+import {
+  obtenerOpcionesEnvio,
+  validarParametrosCotizacion,
+} from "../service/enviopack/quote-service.js";
 import { createEnviopackShipment } from "../service/enviopack/order-shipping-service.js";
 import OrderModel from "../dao/models/order-model.js";
 
@@ -15,104 +17,44 @@ const CONDICION_TO_STATUS = {
   E: "entregado",
   C: "cancelado",
 };
-const CONDICIONES_CON_ALERTA = new Set(["R", "D", "A"]); 
+const CONDICIONES_CON_ALERTA = new Set(["R", "D", "A"]);
 function mapCondicionToStatus(condicion) {
   return CONDICION_TO_STATUS[condicion] || null;
 }
 
-// 👇 Correos habilitados para envío a domicilio en tu cuenta.
-// Tu cuenta usa Distribución Unificada, así que por ahora solo "enviopack"
-// está realmente activo (confirmado en app.enviopack.com/configuracion/distribucion).
-// Si en el futuro activás carriers individuales para domicilio, sumalos acá.
-const CORREOS_HABILITADOS = ["enviopack", "oca", "urbano"];
+const FORMATOS_ETIQUETA = ["pdf", "jpg"];
 
-// 👇 Filtra por tipo de despacho según si el correo tiene sucursales o no:
-// - Si el correo tiene sucursales (OCA, Urbano): despacho "S" (vos llevás el paquete a la sucursal, más barato).
-// - Si el correo NO tiene sucursales (Red Envíopack): despacho "D" (te lo retiran, es la única opción que existe).
-function filtrarPorDespacho(cotizaciones) {
-  return cotizaciones.filter((o) => o.despacho === "S");
-}
+// Log sin datos personales: solo el detalle técnico del error de Enviopack.
+const logEnviopackError = (contexto, err) => {
+  const detalle = err.response?.data
+    ? JSON.stringify(err.response.data).slice(0, 500)
+    : err.message;
+  console.error(`Enviopack error (${contexto}):`, err.response?.status ?? "", detalle);
+};
 
-function dedupeCheapestByCorreo(cotizaciones) {
-  const porCorreo = new Map();
-
-  for (const o of cotizaciones) {
-    const key = `${o.correo?.id}-${o.servicio}`;
-    const actual = porCorreo.get(key);
-    if (!actual || Number(o.valor) < Number(actual.valor)) {
-      porCorreo.set(key, o);
-    }
-  }
-
-  return Array.from(porCorreo.values());
-}
-
+// Pública (la usa el checkout). Tiene rate limit en shipping.router.js.
 export async function getShippingOptions(req, res) {
+  const params = {
+    provincia: req.query.provincia,
+    codigo_postal: req.query.codigo_postal,
+    peso: req.query.peso,
+    paquetes: req.query.paquetes,
+    localidad: req.query.localidad,
+  };
+
+  const error = validarParametrosCotizacion(params);
+  if (error) return res.status(400).json({ message: error });
+
   try {
-    const { provincia, codigo_postal, peso, paquetes, localidad } = req.query;
-
-    const [aDomicilio, aSucursal] = await Promise.all([
-      cotizarCosto({
-        provincia,
-        codigo_postal: Number(codigo_postal),
-        peso: Number(peso),
-        paquetes,
-      }),
-      localidad
-        ? cotizarASucursal({
-            provincia,
-            localidad: Number(localidad),
-            peso: Number(peso),
-            paquetes,
-          })
-        : Promise.resolve([]),
-    ]);
-    console.log(
-      "=== COTIZACIONES ENVIÓPACK ===",
-      JSON.stringify(aDomicilio, null, 2),
-    );
-
-    // 1. Filtrar por modalidad domicilio + correos habilitados
-    // 2. Filtrar por tipo de despacho correcto según el correo
-    // 3. Quedarnos con la más barata por correo+servicio
-    const domicilioFiltrado = dedupeCheapestByCorreo(
-      filtrarPorDespacho(
-        aDomicilio.filter(
-          (o) =>
-            o.modalidad === "D" && CORREOS_HABILITADOS.includes(o.correo?.id),
-        ),
-      ),
-    );
-
-    const options = [
-      ...domicilioFiltrado.map((o) => ({
-        tipo: "domicilio",
-        correo: o.correo?.id,
-        despacho: o.despacho, // 👈 antes faltaba, shipOrder lo necesita para crearEnvio
-        modalidad: o.modalidad,
-        servicio: o.servicio,
-        valor: o.valor,
-        horas_entrega: o.horas_entrega,
-      })),
-      ...aSucursal.map((o) => ({
-        tipo: "sucursal",
-        correo: o.sucursal.correo.id,
-        despacho: o.despacho, // 👈 mismo fix, por consistencia
-        modalidad: o.modalidad,
-        servicio: o.servicio,
-        valor: o.valor,
-        horas_entrega: o.horas_entrega,
-        sucursal: o.sucursal,
-      })),
-    ];
-
+    const options = await obtenerOpcionesEnvio(params);
     res.json(options);
   } catch (err) {
-    console.error("Enviopack error:", err.response?.data || err.message);
-    res.status(500).json({ err: "Error al obtener las opciones de envío" });
+    logEnviopackError("opciones", err);
+    res.status(502).json({ message: "Error al obtener las opciones de envío" });
   }
 }
 
+// Solo admin
 export async function shipOrder(req, res) {
   try {
     const { orderId } = req.params;
@@ -136,22 +78,28 @@ export async function shipOrder(req, res) {
 
     res.json({ pedido, envio });
   } catch (err) {
-    console.error("Enviopack error:", err.response?.data || err.message);
-    res.status(500).json({ error: "No se pudo confirmar el envío" });
+    logEnviopackError("crear envío", err);
+    res.status(502).json({ message: "No se pudo confirmar el envío" });
   }
 }
 
+// Solo admin
 export async function getShipmentTracking(req, res) {
+  const envioId = Number(req.params.envioId);
+  if (!Number.isInteger(envioId) || envioId <= 0) {
+    return res.status(400).json({ message: "ID de envío inválido" });
+  }
   try {
-    const { envioId } = req.params;
-    const tracking = await getTracking(Number(envioId));
+    const tracking = await getTracking(envioId);
     res.json(tracking);
   } catch (err) {
-    console.error(err.response?.data || err.message);
-    res.status(500).json({ error: "No se pudo obtener el tracking" });
+    logEnviopackError("tracking", err);
+    res.status(502).json({ message: "No se pudo obtener el tracking" });
   }
 }
 
+// Llamado por Enviopack (pública). Los datos se vuelven a consultar a la API de Enviopack,
+// así que una notificación falsa no puede cambiar el estado de una orden.
 export async function handleEnviopackWebhook(req, res) {
   const { tipo, id } = req.query;
 
@@ -167,7 +115,7 @@ export async function handleEnviopackWebhook(req, res) {
         "enviopack.envioId": Number(id),
       });
       if (!order) {
-        console.warn(`Webhook: no se encontró orden para envioId ${id}`);
+        console.warn(`Webhook Enviopack: no se encontró orden para envioId ${id}`);
         return;
       }
 
@@ -195,46 +143,59 @@ export async function handleEnviopackWebhook(req, res) {
       );
     }
   } catch (err) {
-    console.error(
-      "Error procesando webhook de Enviopack:",
-      err.response?.data || err.message,
-    );
+    logEnviopackError("webhook", err);
   }
 }
 
+// Solo admin
 export async function getShippingCost(req, res) {
+  const params = {
+    provincia: req.query.provincia,
+    codigo_postal: req.query.codigo_postal,
+    peso: req.query.peso,
+    paquetes: req.query.paquetes,
+  };
+  const error = validarParametrosCotizacion(params);
+  if (error) return res.status(400).json({ message: error });
+
   try {
-    const { provincia, codigo_postal, peso, paquetes } = req.query;
-
     const cotizaciones = await cotizarCosto({
-      provincia,
-      codigo_postal: Number(codigo_postal),
-      peso: Number(peso),
-      paquetes,
+      ...params,
+      codigo_postal: Number(params.codigo_postal),
+      peso: Number(params.peso),
     });
-
     res.json(cotizaciones);
   } catch (err) {
-    console.error("Enviopack error:", err.response?.data || err.message);
-    res.status(500).json({ err: "No se pudo obtener el costo de envío" });
+    logEnviopackError("costo", err);
+    res.status(502).json({ message: "No se pudo obtener el costo de envío" });
   }
 }
 
+// Solo admin
 export async function getShippingCondiciones(req, res) {
   try {
     const data = await getCondiciones();
     res.json(data);
   } catch (err) {
-    console.error("Enviopack error:", err.response?.data || err.message);
-    res.status(500).json({ error: "No se pudo obtener las condiciones" });
+    logEnviopackError("condiciones", err);
+    res.status(502).json({ message: "No se pudo obtener las condiciones" });
   }
 }
-export async function getShippingLabel(req, res) {
-  try {
-    const { envioId } = req.params;
-    const { formato = "pdf", bulto } = req.query;
 
-    const archivo = await getEtiqueta(Number(envioId), formato, bulto);
+// Solo admin
+export async function getShippingLabel(req, res) {
+  const envioId = Number(req.params.envioId);
+  if (!Number.isInteger(envioId) || envioId <= 0) {
+    return res.status(400).json({ message: "ID de envío inválido" });
+  }
+
+  const formato = FORMATOS_ETIQUETA.includes(req.query.formato)
+    ? req.query.formato
+    : "pdf";
+  const bulto = /^\d{1,3}$/.test(req.query.bulto || "") ? req.query.bulto : undefined;
+
+  try {
+    const archivo = await getEtiqueta(envioId, formato, bulto);
 
     res.set({
       "Content-Type": formato === "jpg" ? "image/jpeg" : "application/pdf",
@@ -243,13 +204,13 @@ export async function getShippingLabel(req, res) {
     res.send(Buffer.from(archivo));
   } catch (err) {
     const detalle = err.response?.data
-      ? Buffer.from(err.response.data).toString()
+      ? Buffer.from(err.response.data).toString().slice(0, 500)
       : err.message;
     console.error("Enviopack error (etiqueta):", detalle);
 
     // Si el envío todavía no está "Procesado", Enviopack devuelve error acá
-    res.status(err.response?.status || 500).json({
-      error: "No se pudo obtener la etiqueta (¿el envío ya está en estado Procesado?)",
+    res.status(err.response?.status || 502).json({
+      message: "No se pudo obtener la etiqueta (¿el envío ya está en estado Procesado?)",
     });
   }
 }

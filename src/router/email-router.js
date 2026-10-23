@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { sendEmail } from "../controllers/email.controller.js";
-import upload from "../config/multerConfig.js"; // ajustá la ruta según donde lo tengas
+import { uploadContactFiles } from "../config/multerConfig.js";
+import { contactLimiter } from "../middlewares/rate-limit.js";
 
 const router = Router();
 
-router.post("/send", upload.array("archivos", 5), sendEmail);
+// El límite va antes de multer: se corta el abuso sin recibir los archivos.
+router.post("/send", contactLimiter, uploadContactFiles.array("archivos", 5), sendEmail);
 
 export default router;

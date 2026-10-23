@@ -22,16 +22,36 @@ const productSchema = new mongoose.Schema({
     vence: { type: Date, default: null },
   },
 });
+
+// Una oferta solo aplica si está activa, tiene descuento y no venció.
+// Misma regla que ProductDao._isOfertaVigente y el cálculo del checkout.
+export const isOfertaVigente = (oferta, ahora = new Date()) => {
+  if (!oferta?.activa || !oferta?.descuento) return false;
+  if (!oferta.vence) return true;
+  return new Date(oferta.vence) > ahora;
+};
+
+export const calcularPrecioConIva = (precio, iva) =>
+  Math.round(precio * (1 + (iva ?? 0) / 100));
+
+export const calcularPrecioFinal = (precio, iva, oferta) => {
+  const conIva = calcularPrecioConIva(precio, iva);
+  if (!isOfertaVigente(oferta)) return conIva;
+  return Math.round(conIva * (1 - oferta.descuento / 100));
+};
+
 //Precio con IVA incluido
-//
 productSchema.virtual("precioConIva").get(function () {
-  return Math.round(this.precio * (1 + this.iva / 100));
+  return calcularPrecioConIva(this.precio, this.iva);
 });
 
+// Precio que se cobra: con IVA y con la oferta aplicada si está vigente
 productSchema.virtual("precioFinal").get(function () {
-  const base = this.precioConIva;
-  if (!this.oferta.activa || this.oferta.descuento === 0) return base;
-  return Math.round(base * (1 - this.oferta.descuento / 100));
+  return calcularPrecioFinal(this.precio, this.iva, this.oferta);
+});
+
+productSchema.virtual("ofertaVigente").get(function () {
+  return isOfertaVigente(this.oferta);
 });
 
 productSchema.set("toJSON", { virtuals: true });

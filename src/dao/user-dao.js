@@ -1,5 +1,8 @@
 import UserModel from "./models/user-model.js";
 
+// Comparación de emails sin distinguir mayúsculas (los usuarios existentes pueden tener mayúsculas guardadas).
+const EMAIL_COLLATION = { locale: "es", strength: 2 };
+
 class UserDAO {
     async createUser(user) {
         try {
@@ -17,7 +20,7 @@ class UserDAO {
             throw error;
         }
     }
-    
+
     async updateUser(id, user) {
         try {
             const updatedUser = await UserModel.findByIdAndUpdate(id, user, { new: true });
@@ -34,7 +37,7 @@ class UserDAO {
             throw error;
         }
     }
-    
+
     async getUsers() {
         try {
             const users = await UserModel.find();
@@ -43,9 +46,12 @@ class UserDAO {
             throw error;
         }
     }
+    // Incluye el hash de la contraseña: lo necesita el login. No devolver este resultado al cliente.
     async getUserByEmail(email) {
         try {
-            const user = await UserModel.findOne({ email });
+            const user = await UserModel.findOne({ email })
+                .collation(EMAIL_COLLATION)
+                .select("+password");
             return user;
         } catch (error) {
             throw error;
