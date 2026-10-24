@@ -1,11 +1,11 @@
 import OrderDAO from "../dao/order-dao.js";
 
 class OrderRepository {
-  async createOrder(data, options) {
-    return await OrderDAO.createOrder(data, options);
+  async createOrder(data) {
+    return await OrderDAO.createOrder(data);
   }
-  async getOrders() {
-    return await OrderDAO.getOrders();
+  async getOrdersByUser(userId) {
+    return await OrderDAO.getOrdersByUser(userId);
   }
   async getOrderById(id) {
     return await OrderDAO.getOrderById(id);
@@ -35,15 +35,14 @@ class OrderRepository {
     return await OrderDAO.sumProductsSold();
   }
   async getOrdersPaginated(params) {
-  return await OrderDAO.getOrdersPaginated(params);
-}
-async getOrdersByStatusCount() {
-  return await OrderDAO.getOrdersByStatusCount();
-}
-async getSalesByPaymentMethod() {
+    return await OrderDAO.getOrdersPaginated(params);
+  }
+  async getOrdersByStatusCount() {
+    return await OrderDAO.getOrdersByStatusCount();
+  }
+  async getSalesByPaymentMethod() {
     return await OrderDAO.getSalesByPaymentMethod();
-}
-
+  }
 }
 
 export default new OrderRepository();

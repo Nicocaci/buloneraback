@@ -1,38 +1,32 @@
 import OrderController from "../controllers/order-controller.js";
 import express from "express";
 import authMiddleware from "../middlewares/auth-middleware.js";
-
+import { estadoPagoLimiter } from "../middlewares/rate-limit.js";
 
 const router = express.Router();
+const adminOnly = authMiddleware(["admin"]);
 
-// Crear orden (usuario logueado)
-router.post('/', authMiddleware(), OrderController.createOrder);
+// Las órdenes se crean solo desde el checkout (POST /api/mp/create_order).
 
-// Stats (solo admin)
-router.get('/stats', authMiddleware(["admin"]), OrderController.getSalesStats);
+// ─── Admin ───────────────────────────────
+router.get("/stats", adminOnly, OrderController.getSalesStats);
+router.get("/status/:status", adminOnly, OrderController.getOrderByStatus);
+router.get("/user/:userId", adminOnly, OrderController.getOrderByUser);
+router.get("/admin", adminOnly, OrderController.getOrdersPaginated);
 
-// Buscar por estado (admin)
-router.get('/status/:status', authMiddleware(["admin"]), OrderController.getOrderByStatus);
+// ─── Usuario logueado ────────────────────
+// Mis órdenes
+router.get("/", authMiddleware(), OrderController.getMyOrders);
 
-// Ordenes de un usuario
-router.get('/user/:userId', authMiddleware(["admin"]), OrderController.getOrderByUser);
+// ─── Pública: estado del pago para la pantalla /gracias ──
+router.get("/:id/estado-pago", estadoPagoLimiter, OrderController.getEstadoPago);
 
-// Mis ordenes
-router.get('/', authMiddleware(), OrderController.getOrders);
+// Orden por ID (dueño o admin)
+router.get("/:id", authMiddleware(), OrderController.getOrderById);
 
-// Todas las ordenes paginadas (admin)
-router.get('/admin', authMiddleware(["admin"]), OrderController.getOrdersPaginated);
-
-// Orden por ID
-router.get('/:id', authMiddleware(), OrderController.getOrderById);
-
-// Actualizar orden
-router.put('/:id', authMiddleware(["admin"]), OrderController.updateOrder);
-
-// Cambiar estado
-router.put('/:id/status', authMiddleware(["admin"]), OrderController.updateOrderStatus);
-
-// Eliminar orden
-router.delete('/:id', authMiddleware(["admin"]), OrderController.deleteOrder);
+// ─── Admin ───────────────────────────────
+router.put("/:id", adminOnly, OrderController.updateOrder);
+router.put("/:id/status", adminOnly, OrderController.updateOrderStatus);
+router.delete("/:id", adminOnly, OrderController.deleteOrder);
 
 export default router;

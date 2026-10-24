@@ -14,7 +14,40 @@ const LOGO_URL = process.env.EMAIL_LOGO_URL;
 
 const STORE_URL = process.env.STORE_URL ?? "https://buloneraeltriangulo.com";
 
-function buildOrderEmailHtml({
+// Los datos que escribe el cliente (nombre, dirección) no pueden inyectar HTML en el mail.
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+// Resend no lanza excepción si falla: devuelve { error }. Acá se convierte en excepción
+// para que el error quede registrado en los logs.
+async function enviar(payload) {
+  const { data, error } = await resend.emails.send(payload);
+  if (error) throw new Error(error.message || "Error de Resend");
+  return data;
+}
+
+function buildOrderEmailHtml(datos) {
+  return buildOrderEmailHtmlSeguro({
+    ...datos,
+    customerName: datos.customerName ? escapeHtml(datos.customerName) : datos.customerName,
+    shippingAddress: datos.shippingAddress ? escapeHtml(datos.shippingAddress) : datos.shippingAddress,
+    shippingMethod: datos.shippingMethod ? escapeHtml(datos.shippingMethod) : datos.shippingMethod,
+    items: escaparItems(datos.items),
+  });
+}
+
+const escaparItems = (items = []) =>
+  items.map((item) => ({
+    ...item,
+    product: { ...item.product, item: escapeHtml(item.product?.item) },
+  }));
+
+function buildOrderEmailHtmlSeguro({
   orderId,
   items,
   total,
@@ -214,7 +247,7 @@ export async function sendOrderConfirmationEmail({
   shippingAddress,
   trackingUrl,
 }) {
-  await resend.emails.send({
+  await enviar({
     from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
     to,
     subject: `Pedido confirmado #${orderId}`,
@@ -231,7 +264,19 @@ export async function sendOrderConfirmationEmail({
     }),
   });
 }
-function buildStoreNotificationHtml({
+function buildStoreNotificationHtml(datos) {
+  return buildStoreNotificationHtmlSeguro({
+    ...datos,
+    customerName: datos.customerName ? escapeHtml(datos.customerName) : datos.customerName,
+    customerEmail: datos.customerEmail ? escapeHtml(datos.customerEmail) : datos.customerEmail,
+    customerPhone: datos.customerPhone ? escapeHtml(datos.customerPhone) : datos.customerPhone,
+    shippingAddress: datos.shippingAddress ? escapeHtml(datos.shippingAddress) : datos.shippingAddress,
+    shippingMethod: datos.shippingMethod ? escapeHtml(datos.shippingMethod) : datos.shippingMethod,
+    items: escaparItems(datos.items),
+  });
+}
+
+function buildStoreNotificationHtmlSeguro({
   orderId,
   items,
   total,
@@ -354,7 +399,7 @@ export async function sendStoreNotificationEmail({
   shippingMethod,
   paymentMethod,
 }) {
-  await resend.emails.send({
+  await enviar({
     from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
     to: process.env.STORE_NOTIFICATION_EMAIL,
     subject: `🛒 Nueva venta #${orderId} — ${customerName || "Cliente"}`,
@@ -370,5 +415,30 @@ export async function sendStoreNotificationEmail({
       shippingMethod,
       paymentMethod,
     }),
+  });
+}
+
+// Aviso interno cuando una orden necesita revisión manual
+// (monto distinto al de la orden, pago aprobado sin stock, reembolso, error al crear el envío).
+export async function sendStoreAlertEmail({ orderNumber, motivo }) {
+  await enviar({
+    from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
+    to: process.env.STORE_NOTIFICATION_EMAIL,
+    subject: `⚠️ Revisar pedido #${orderNumber}`,
+    html: `
+  <div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;padding:20px;background:#f2f2f2;">
+    <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:10px;overflow:hidden;">
+      <div style="background-color:${BRAND.black};padding:18px 24px;">
+        <span style="color:#fff;font-size:15px;font-weight:700;">Pedido #${orderNumber} — requiere revisión</span>
+      </div>
+      <div style="height:4px;background-color:${BRAND.red};"></div>
+      <p style="padding:20px 24px;margin:0;color:${BRAND.black};font-size:14px;line-height:22px;">
+        ${escapeHtml(motivo)}
+      </p>
+      <p style="padding:0 24px 24px 24px;margin:0;color:${BRAND.gray};font-size:13px;">
+        Revisalo en el panel de administración y en tu cuenta de Mercado Pago.
+      </p>
+    </div>
+  </div>`,
   });
 }

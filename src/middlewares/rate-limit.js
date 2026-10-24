@@ -40,6 +40,13 @@ export const checkoutLimiter = crearLimite({
   message: "Demasiados intentos de pago seguidos. Probá de nuevo en unos minutos.",
 });
 
+// La pantalla /gracias consulta el estado del pago unas pocas veces
+export const estadoPagoLimiter = crearLimite({
+  windowMs: 5 * MINUTO,
+  limit: 60,
+  message: "Demasiadas consultas seguidas. Probá de nuevo en unos minutos.",
+});
+
 export const shippingQuoteLimiter = crearLimite({
   windowMs: 5 * MINUTO,
   limit: 60,
