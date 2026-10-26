@@ -57,14 +57,17 @@ class ProductDao {
       sort,
       soloOfertas = false, // filtrar solo productos en oferta vigente
       vista, // "resumen": para tarjetas y buscador, sin la descripción (texto largo)
+      idsBusqueda, // resultado de la búsqueda (product-search.js), del más relevante al menos
     } = filters;
 
     const skip = (page - 1) * limit;
     const query = { estado: "activo" };
     query.$and = [];
 
-    // 🔍 BÚSQUEDA GLOBAL
-    if (search) {
+    // 🔍 BÚSQUEDA: si viene resuelta por product-search.js se filtra por esos IDs
+    if (idsBusqueda) {
+      query._id = { $in: idsBusqueda };
+    } else if (search) {
       const escaped = escapeRegex(search);
       query.$and.push({
         $or: [
@@ -114,6 +117,23 @@ class ProductDao {
     sortOption._id = 1;
 
     const proyeccion = vista === "resumen" ? { descripcion: 0 } : {};
+
+    // Búsqueda sin un orden elegido: se respeta la relevancia. Son pocos productos,
+    // así que se traen todos los que coinciden y se pagina acá.
+    if (idsBusqueda && !sort) {
+      const posicion = new Map(idsBusqueda.map((id, i) => [String(id), i]));
+      const todos = await ProductModel.find(query, proyeccion).lean();
+      todos.sort((a, b) => posicion.get(String(a._id)) - posicion.get(String(b._id)));
+      return {
+        products: todos.slice(skip, skip + Number(limit)).map((p) => this._addVirtuals(p)),
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: todos.length,
+          totalPages: Math.max(1, Math.ceil(todos.length / limit)),
+        },
+      };
+    }
 
     const [rawProducts, total] = await Promise.all([
       ProductModel.find(query, proyeccion)
@@ -172,7 +192,8 @@ class ProductDao {
 
   async getDistinctCategories() {
     const result = await ProductModel.aggregate([
-      { $match: { categoria: { $exists: true, $nin: [null, ""] } } },
+      // Solo productos visibles: una categoría sin productos activos no aparece en el menú
+      { $match: { estado: "activo", categoria: { $exists: true, $nin: [null, ""] } } },
       {
         $group: {
           _id: { $toLower: { $trim: { input: "$categoria" } } },
@@ -185,7 +206,8 @@ class ProductDao {
   }
 
   async getDistinctSubcategoriesByCategory(categoria) {
-    return await ProductModel.distinct("subcategoria", { categoria });
+    const lista = await ProductModel.distinct("subcategoria", { categoria, estado: "activo" });
+    return lista.filter(Boolean);
   }
 
   // ─────────────────────────────────────────

@@ -1,4 +1,16 @@
 import ProductRepository from "../repository/product-repository.js";
+import {
+  buscarIdsProductos,
+  calcularFacetas,
+  invalidarIndiceBusqueda,
+} from "./product-search.js";
+
+// Ejecuta un cambio del admin y descarta la copia de búsqueda para que se vea al instante
+const conInvalidacion = async (accion) => {
+  const resultado = await accion();
+  invalidarIndiceBusqueda();
+  return resultado;
+};
 
 class ProductService {
   // ─────────────────────────────────────────
@@ -6,11 +18,17 @@ class ProductService {
   // ─────────────────────────────────────────
 
   async createProduct(data) {
-    return await ProductRepository.createProduct(data);
+    return conInvalidacion(() => ProductRepository.createProduct(data));
   }
 
   async getProducts(filters) {
-    return await ProductRepository.getProducts(filters);
+    if (!filters.search) return await ProductRepository.getProducts(filters);
+    const idsBusqueda = await buscarIdsProductos(filters.search);
+    return await ProductRepository.getProducts({ ...filters, idsBusqueda });
+  }
+
+  async getFacetas(filtros) {
+    return await calcularFacetas(filtros);
   }
 
   async getProductById(pid) {
@@ -22,11 +40,11 @@ class ProductService {
   }
 
   async updateProduct(pid, data) {
-    return await ProductRepository.updateProduct(pid, data);
+    return conInvalidacion(() => ProductRepository.updateProduct(pid, data));
   }
 
   async deleteProduct(pid) {
-    return await ProductRepository.deleteProduct(pid);
+    return conInvalidacion(() => ProductRepository.deleteProduct(pid));
   }
 
   // ─────────────────────────────────────────
@@ -51,15 +69,15 @@ class ProductService {
   }
 
   async activarOferta(pid, descuento, vence = null) {
-    return await ProductRepository.activarOferta(pid, descuento, vence);
+    return conInvalidacion(() => ProductRepository.activarOferta(pid, descuento, vence));
   }
 
   async desactivarOferta(pid) {
-    return await ProductRepository.desactivarOferta(pid);
+    return conInvalidacion(() => ProductRepository.desactivarOferta(pid));
   }
 
   async limpiarOfertasVencidas() {
-    return await ProductRepository.limpiarOfertasVencidas();
+    return conInvalidacion(() => ProductRepository.limpiarOfertasVencidas());
   }
 }
 

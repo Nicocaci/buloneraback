@@ -1,5 +1,4 @@
 import ProductService from "../service/product-service.js";
-import ProductModel from "../dao/models/product-model.js";
 import mongoose from "mongoose";
 import cloudinary from "../config/cloudinary.js";
 import streamifier from "streamifier";
@@ -265,11 +264,26 @@ class ProductController {
     try {
       const { category } = req.params;
 
-      const subcategories = await ProductModel.distinct("subcategoria", {
-        categoria: category,
-      });
+      const subcategories = await ProductService.getDistinctSubcategoriesByCategory(category);
 
       return res.status(200).json(subcategories);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Cantidades por categoría, subcategoría y marca para el filtro de productos.
+  // Acepta los mismos filtros que el listado.
+  async getFacetas(req, res, next) {
+    try {
+      const facetas = await ProductService.getFacetas({
+        categoria: queryString(req.query.category),
+        subcategoria: queryString(req.query.subcategory),
+        marca: queryString(req.query.marca),
+        search: queryString(req.query.search),
+        soloOfertas: req.query.soloOfertas === "true",
+      });
+      return res.status(200).json(facetas);
     } catch (error) {
       next(error);
     }

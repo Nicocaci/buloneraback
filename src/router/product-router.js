@@ -20,6 +20,9 @@ router.get(
   ProductController.getSubcategoriesByCategory,
 );
 
+// Cantidades para el filtro (categorías, subcategorías, marcas)
+router.get("/facetas", ProductController.getFacetas);
+
 // Buscar por SKU
 router.get("/sku/:sku", ProductController.getProductBySku);
 
