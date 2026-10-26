@@ -32,7 +32,9 @@ export const createOrder = async (req, res, next) => {
         email: order.comprador.email,
       },
       payment_methods: {
-        installments: 3,
+        // Un solo pago: el comercio no ofrece cuotas
+        installments: 1,
+        default_installments: 1,
         excluded_payment_types: [{ id: "ticket" }],
         excluded_payment_methods: [],
       },

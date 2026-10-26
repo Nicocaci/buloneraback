@@ -169,7 +169,8 @@ export async function sendQuoteEmail({
 }) {
   const { data, error } = await resend.emails.send({
     from: "BULONERA EL TRIÁNGULO <contacto@buloneraeltriangulo.com>",
-    to: "eltrianguloventasonline@gmail.com",
+    // Destinatario configurable: en local se puede apuntar a una casilla propia
+    to: process.env.CONTACT_EMAIL_TO || "eltrianguloventasonline@gmail.com",
     replyTo: email, // al tocar "Responder" en Gmail, le contestás directo al cliente
     subject: `SOLICITUD DE COTIZACIÓN ${nombre}`,
     html: buildQuoteEmailHtml({
