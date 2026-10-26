@@ -8,7 +8,6 @@
 
     router.get("/me", CartController.getMyCart);
     router.post("/me/products/:pid", CartController.addProduct);
-    router.post("/me/assign-guest", CartController.assignGuestCart);
     router.put("/me/products/:pid", CartController.updateProduct);
     router.delete("/me/products/:pid", CartController.removeProduct);
     router.delete("/me", CartController.clearMyCart);

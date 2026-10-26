@@ -1,5 +1,4 @@
 import ProductRepository from "../repository/product-repository.js";
-import ProductModel from "../dao/models/product-model.js";
 
 class ProductService {
   // ─────────────────────────────────────────
@@ -28,26 +27,6 @@ class ProductService {
 
   async deleteProduct(pid) {
     return await ProductRepository.deleteProduct(pid);
-  }
-
-  // ─────────────────────────────────────────
-  // Filtros de conveniencia
-  // ─────────────────────────────────────────
-
-  async getProductByBrand(marca, page, limit) {
-    return await ProductRepository.getProductByBrand(marca, page, limit);
-  }
-
-  async getProductByCategory(categoria, page, limit) {
-    return await ProductRepository.getProductByCategory(categoria, page, limit);
-  }
-
-  async getProductBySubCategory(subcategoria, page, limit) {
-    return await ProductRepository.getProductBySubCategory(
-      subcategoria,
-      page,
-      limit,
-    );
   }
 
   // ─────────────────────────────────────────

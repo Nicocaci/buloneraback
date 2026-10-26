@@ -164,10 +164,6 @@ class ProductDao {
   // Categorías y subcategorías
   // ─────────────────────────────────────────
 
-  async getSubCategories() {
-    return await ProductModel.distinct("subcategoria");
-  }
-
   async getDistinctCategories() {
     const result = await ProductModel.aggregate([
       { $match: { categoria: { $exists: true, $nin: [null, ""] } } },

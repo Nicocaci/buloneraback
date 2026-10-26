@@ -30,32 +30,9 @@ class ProductRepository {
   }
 
   // ─────────────────────────────────────────
-  // Filtros de conveniencia (usan getProducts internamente)
-  // ─────────────────────────────────────────
-
-  async getProductByBrand(marca, page = 1, limit = 10) {
-    return await ProductDao.getProducts({ marca, page, limit });
-  }
-
-  async getProductByCategory(categoria, page = 1, limit = 10) {
-    return await ProductDao.getProducts({ category: categoria, page, limit });
-  }
-
-  async getProductBySubCategory(subcategoria, page = 1, limit = 10) {
-    return await ProductDao.getProducts({
-      subcategory: subcategoria,
-      page,
-      limit,
-    });
-  }
-
-  // ─────────────────────────────────────────
   // Categorías y subcategorías
   // ─────────────────────────────────────────
 
-  async getSubCategories() {
-    return await ProductDao.getSubCategories();
-  }
   async getDistinctCategories() {
     return await ProductDao.getDistinctCategories();
   }

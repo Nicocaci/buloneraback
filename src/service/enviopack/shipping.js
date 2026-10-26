@@ -1,16 +1,6 @@
 // src/services/enviopack/shipping.js
 import { enviopackRequest } from "./client.js";
 
-// params: { provincia, codigo_postal, peso, paquetes }
-export function cotizarADomicilio(params) {
-  return enviopackRequest("GET", "/cotizar/precio/a-domicilio", {
-    params: {
-      ...params,
-      direccion_envio: process.env.ENVIOPACK_DIRECCION_ENVIO,
-    },
-  });
-}
-
 // params: { provincia, localidad, peso, paquetes }
 export function cotizarASucursal(params) {
   return enviopackRequest("GET", "/cotizar/precio/a-sucursal", {
@@ -59,14 +49,6 @@ export function getCondiciones() {
 export function getEtiqueta(envioId, formato = "pdf", bulto) {
   return enviopackRequest("GET", `/envios/${envioId}/etiqueta`, {
     params: { formato, ...(bulto ? { bulto } : {}) },
-    responseType: "arraybuffer",
-  });
-}
-
-// Etiquetas en lote (siempre devuelve PDF, ids separados por coma)
-export function getEtiquetasLote(ids) {
-  return enviopackRequest("GET", "/envios/etiquetas", {
-    params: { ids: Array.isArray(ids) ? ids.join(",") : ids },
     responseType: "arraybuffer",
   });
 }
