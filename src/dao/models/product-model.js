@@ -23,6 +23,12 @@ const productSchema = new mongoose.Schema({
   },
 });
 
+// ─── Índices ───────────────────────────────────────────────
+// Listado y filtros del catálogo (siempre se filtra por estado: "activo")
+productSchema.index({ estado: 1, categoria: 1, subcategoria: 1 });
+// Productos en oferta, ordenados por descuento
+productSchema.index({ "oferta.activa": 1, "oferta.descuento": -1 });
+
 // Una oferta solo aplica si está activa, tiene descuento y no venció.
 // Misma regla que ProductDao._isOfertaVigente y el cálculo del checkout.
 export const isOfertaVigente = (oferta, ahora = new Date()) => {

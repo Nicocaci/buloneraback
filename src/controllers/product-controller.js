@@ -215,6 +215,7 @@ class ProductController {
         marca: queryString(req.query.marca),
         sort: queryString(req.query.sort),
         soloOfertas: soloOfertas === "true",
+        vista: req.query.vista === "resumen" ? "resumen" : undefined,
       });
 
       return res.status(200).json(result);

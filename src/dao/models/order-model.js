@@ -147,6 +147,17 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// ─── Índices ───────────────────────────────────────────────
+// Listado del admin (las más recientes primero)
+orderSchema.index({ date: -1 });
+// "Mis órdenes" de un usuario
+orderSchema.index({ user: 1, date: -1 });
+// Webhook de Enviopack: busca la orden por el ID del envío (solo las que tienen envío)
+orderSchema.index(
+  { "enviopack.envioId": 1 },
+  { partialFilterExpression: { "enviopack.envioId": { $exists: true } } },
+);
+
 orderSchema.pre("save", async function (next) {
   if (this.isNew && this.orderNumber == null) {
     const counter = await CounterModel.findOneAndUpdate(

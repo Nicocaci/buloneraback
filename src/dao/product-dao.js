@@ -56,6 +56,7 @@ class ProductDao {
       maxPrice,
       sort,
       soloOfertas = false, // filtrar solo productos en oferta vigente
+      vista, // "resumen": para tarjetas y buscador, sin la descripción (texto largo)
     } = filters;
 
     const skip = (page - 1) * limit;
@@ -108,9 +109,14 @@ class ProductDao {
     if (sort === "price_asc") sortOption.precio = 1;
     if (sort === "price_desc") sortOption.precio = -1;
     if (sort === "descuento_desc") sortOption["oferta.descuento"] = -1;
+    // Desempate por _id: sin un orden único, MongoDB puede devolver el mismo producto
+    // en dos páginas (o saltearse uno) cuando hay precios o descuentos repetidos.
+    sortOption._id = 1;
+
+    const proyeccion = vista === "resumen" ? { descripcion: 0 } : {};
 
     const [rawProducts, total] = await Promise.all([
-      ProductModel.find(query)
+      ProductModel.find(query, proyeccion)
         .sort(sortOption)
         .skip(skip)
         .limit(Number(limit))

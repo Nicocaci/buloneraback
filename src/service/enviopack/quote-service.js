@@ -28,8 +28,39 @@ function dedupeCheapestByCorreo(cotizaciones) {
   return Array.from(porCorreo.values());
 }
 
+// ─── Caché de cotizaciones ──────────────────────────────────
+// La misma cotización (provincia + CP + peso + paquetes) se reutiliza 10 minutos:
+// el checkout cotiza al elegir el envío y el backend vuelve a cotizar al generar el pago.
+// Si llegan dos pedidos iguales a la vez, comparten la misma consulta a Enviopack.
+// Los errores no se guardan.
+const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_MAX = 500;
+const cacheCotizaciones = new Map(); // clave → { expira, promesa }
+
+const claveCotizacion = ({ provincia, codigo_postal, peso, paquetes, localidad }) =>
+  JSON.stringify([provincia, String(codigo_postal), Number(peso), paquetes, localidad || ""]);
+
+export async function obtenerOpcionesEnvio(params) {
+  const clave = claveCotizacion(params);
+  const ahora = Date.now();
+  const guardada = cacheCotizaciones.get(clave);
+  if (guardada && guardada.expira > ahora) return guardada.promesa;
+
+  const promesa = cotizarOpcionesEnvio(params);
+  cacheCotizaciones.set(clave, { expira: ahora + CACHE_TTL_MS, promesa });
+  promesa.catch(() => {
+    if (cacheCotizaciones.get(clave)?.promesa === promesa) cacheCotizaciones.delete(clave);
+  });
+
+  // Tope de tamaño: se descarta la entrada más vieja
+  if (cacheCotizaciones.size > CACHE_MAX) {
+    cacheCotizaciones.delete(cacheCotizaciones.keys().next().value);
+  }
+  return promesa;
+}
+
 // params: { provincia, codigo_postal, peso, paquetes, localidad? }
-export async function obtenerOpcionesEnvio({
+async function cotizarOpcionesEnvio({
   provincia,
   codigo_postal,
   peso,
