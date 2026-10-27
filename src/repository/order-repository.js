@@ -37,6 +37,9 @@ class OrderRepository {
   async getOrdersPaginated(params) {
     return await OrderDAO.getOrdersPaginated(params);
   }
+  async countNecesitanAtencion() {
+    return await OrderDAO.countNecesitanAtencion();
+  }
   async getOrdersByStatusCount() {
     return await OrderDAO.getOrdersByStatusCount();
   }

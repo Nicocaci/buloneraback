@@ -43,14 +43,21 @@ class OrderService {
     return await OrderRepository.getOrdersPaginated(query);
   }
   async getSalesStats() {
-    const [totalOrders, totalRevenue, totalProductsSold, ordersByStatus, salesByPaymentMethod] =
-      await Promise.all([
-        OrderRepository.getTotalOrders(),
-        OrderRepository.getTotalRevenue(),
-        OrderRepository.getTotalProductsSold(),
-        OrderRepository.getOrdersByStatusCount(),
-        OrderRepository.getSalesByPaymentMethod(),
-      ]);
+    const [
+      totalOrders,
+      totalRevenue,
+      totalProductsSold,
+      ordersByStatus,
+      salesByPaymentMethod,
+      necesitanAtencion,
+    ] = await Promise.all([
+      OrderRepository.getTotalOrders(),
+      OrderRepository.getTotalRevenue(),
+      OrderRepository.getTotalProductsSold(),
+      OrderRepository.getOrdersByStatusCount(),
+      OrderRepository.getSalesByPaymentMethod(),
+      OrderRepository.countNecesitanAtencion(),
+    ]);
 
     return {
       totalOrders,
@@ -58,6 +65,7 @@ class OrderService {
       totalProductsSold,
       ordersByStatus,
       salesByPaymentMethod,
+      necesitanAtencion,
     };
   }
 

@@ -6,6 +6,12 @@ const USER_FIELDS = "nombre apellido email";
 // Pagos iniciados y no concretados: no se muestran en el listado del admin salvo que se pidan.
 const ESTADOS_NO_CONCRETADOS = ["pendiente_pago", "rechazado"];
 
+// Órdenes marcadas para revisión manual: por el pago (monto distinto, sin stock, reembolso,
+// envío que no se pudo crear) o por el envío (condición con alerta en Enviopack).
+const FILTRO_NECESITA_ATENCION = {
+  $or: [{ necesitaAtencion: true }, { "enviopack.necesitaAtencion": true }],
+};
+
 class OrderDAO {
   async createOrder(data) {
     return await OrderModel.create(data);
@@ -70,10 +76,18 @@ class OrderDAO {
     return result[0]?.total || 0;
   }
 
-  async getOrdersPaginated({ page = 1, limit = 10, status }) {
-    const query = status
-      ? { status }
-      : { status: { $nin: ESTADOS_NO_CONCRETADOS } };
+  // Órdenes que necesitan atención, en cualquier estado (para "Para hacer hoy" del panel)
+  async countNecesitanAtencion() {
+    return await OrderModel.countDocuments(FILTRO_NECESITA_ATENCION);
+  }
+
+  async getOrdersPaginated({ page = 1, limit = 10, status, atencion = false }) {
+    let query;
+    if (atencion) {
+      query = status ? { status, ...FILTRO_NECESITA_ATENCION } : FILTRO_NECESITA_ATENCION;
+    } else {
+      query = status ? { status } : { status: { $nin: ESTADOS_NO_CONCRETADOS } };
+    }
 
     const skip = (page - 1) * limit;
 

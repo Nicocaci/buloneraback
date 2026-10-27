@@ -162,8 +162,10 @@ class OrderController {
       const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
       const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
       const status = ORDER_STATUSES.includes(req.query.status) ? req.query.status : undefined;
+      // ?atencion=1: solo las órdenes marcadas para revisión
+      const atencion = req.query.atencion === "1" || req.query.atencion === "true";
 
-      const orders = await OrderService.getOrdersPaginated({ page, limit, status });
+      const orders = await OrderService.getOrdersPaginated({ page, limit, status, atencion });
       res.status(200).json(orders);
     } catch (error) {
       next(error);
