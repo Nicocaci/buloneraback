@@ -6,6 +6,11 @@ const USER_FIELDS = "nombre apellido email";
 // Pagos iniciados y no concretados: no se muestran en el listado del admin salvo que se pidan.
 const ESTADOS_NO_CONCRETADOS = ["pendiente_pago", "rechazado"];
 
+// Campos que el cliente no necesita ver en sus compras
+const CAMPOS_INTERNOS_ORDEN =
+  "-mercadoPago -paymentId -stockDescontado -necesitaAtencion -motivoAtencion " +
+  "-enviopack.necesitaAtencion -enviopack.pedidoId -envio.paquetes -cart";
+
 // Órdenes marcadas para revisión manual: por el pago (monto distinto, sin stock, reembolso,
 // envío que no se pudo crear) o por el envío (condición con alerta en Enviopack).
 const FILTRO_NECESITA_ATENCION = {
@@ -17,8 +22,14 @@ class OrderDAO {
     return await OrderModel.create(data);
   }
 
+  // "Mis compras" del cliente: solo las ventas concretadas (igual que el listado del admin,
+  // sin los intentos de pago pendientes o rechazados), con nombre y fotos de cada producto
+  // y sin los campos internos (datos de Mercado Pago, notas de revisión, paquetes).
   async getOrdersByUser(userId) {
-    return await OrderModel.find({ user: userId }).sort({ date: -1 });
+    return await OrderModel.find({ user: userId, status: { $nin: ESTADOS_NO_CONCRETADOS } })
+      .select(CAMPOS_INTERNOS_ORDEN)
+      .populate("products.product", "item imagen")
+      .sort({ date: -1 });
   }
 
   async getOrderById(id) {
