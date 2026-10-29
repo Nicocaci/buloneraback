@@ -22,6 +22,13 @@ const ESTADOS_REEMBOLSO = ["refunded", "charged_back"];
 const aceptaPagosDePrueba = () => process.env.MP_ACCEPT_TEST_PAYMENTS === "true";
 const crearEnviosHabilitado = () => process.env.ENVIOPACK_CREAR_ENVIOS !== "false";
 
+// Estado y fecha del pago para los logs: permite distinguir un pago viejo (anterior a la
+// Fase 1B, cuando external_reference era el carrito) de uno nuevo que no encontró su orden.
+const resumenPago = (payment) => {
+  const fecha = payment.date_approved || payment.date_created;
+  return fecha ? `${payment.status}, ${String(fecha).slice(0, 10)}` : String(payment.status);
+};
+
 const avisarTienda = (orderNumber, motivo) =>
   sendStoreAlertEmail({ orderNumber, motivo }).catch((err) =>
     console.error(`Error enviando alerta del pedido #${orderNumber}:`, err.message),
@@ -46,7 +53,9 @@ export async function procesarPago(paymentId, { orderIdEsperado } = {}) {
 
   const orderId = payment.external_reference;
   if (!mongoose.isValidObjectId(orderId)) {
-    console.warn(`Pago ${payment.id} sin orden asociada (external_reference inválido)`);
+    console.warn(
+      `Pago ${payment.id} (${resumenPago(payment)}): sin orden asociada (external_reference inválido) — ignorado`,
+    );
     return { procesado: false, motivo: "sin orden" };
   }
   if (orderIdEsperado && String(orderIdEsperado) !== String(orderId)) {
@@ -55,7 +64,7 @@ export async function procesarPago(paymentId, { orderIdEsperado } = {}) {
 
   const order = await OrderModel.findById(orderId);
   if (!order) {
-    console.warn(`Pago ${payment.id}: no existe la orden ${orderId}`);
+    console.warn(`Pago ${payment.id} (${resumenPago(payment)}): no existe la orden ${orderId} — ignorado`);
     return { procesado: false, motivo: "sin orden" };
   }
 
