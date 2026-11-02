@@ -230,43 +230,12 @@ class ProductController {
     }
     try {
       const product = await ProductService.getProductById(pid);
-      if (!product)
+      // Un producto inactivo no se muestra en la tienda: se responde igual que si no existiera
+      // (el detalle muestra "no encontrado" y server.js le pone noindex). El admin lo edita
+      // con los datos de su tabla, no con este endpoint.
+      if (!product || product.estado !== "activo")
         return res.status(404).json({ message: "Producto no encontrado" });
       return res.status(200).json(product);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getProductBySku(req, res, next) {
-    const sku = (req.params.sku || "").trim();
-    if (!sku) return res.status(400).json({ message: "SKU requerido" });
-    try {
-      const product = await ProductService.getProductBySku(sku);
-      if (!product)
-        return res.status(404).json({ message: "Producto no encontrado" });
-      return res.status(200).json(product);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getCategories(req, res, next) {
-    try {
-      const categories = await ProductService.getDistinctCategories();
-      return res.status(200).json(categories);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getSubcategoriesByCategory(req, res, next) {
-    try {
-      const { category } = req.params;
-
-      const subcategories = await ProductService.getDistinctSubcategoriesByCategory(category);
-
-      return res.status(200).json(subcategories);
     } catch (error) {
       next(error);
     }
@@ -284,73 +253,6 @@ class ProductController {
         soloOfertas: req.query.soloOfertas === "true",
       });
       return res.status(200).json(facetas);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getSales(req, res, next) {
-    try {
-      const sales = await ProductService.getSales(toLimit(req.query.limit, 10));
-      return res.status(200).json(sales);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  // ─────────────────────────────────────────
-  // Ofertas (solo admin, ver product-router.js)
-  // ─────────────────────────────────────────
-
-  async activarOferta(req, res, next) {
-    const { pid } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(pid)) {
-      return res.status(400).json({ message: "ID inválido" });
-    }
-    try {
-      const { descuento, vence } = req.body;
-      if (descuento === undefined || descuento === null) {
-        return res
-          .status(400)
-          .json({ message: "El campo 'descuento' es requerido" });
-      }
-      if (vence && Number.isNaN(new Date(vence).getTime())) {
-        return res.status(400).json({ message: "La fecha de vencimiento no es válida" });
-      }
-      const updated = await ProductService.activarOferta(
-        pid,
-        Number(descuento),
-        vence || null,
-      );
-      return res
-        .status(200)
-        .json({ message: "Oferta activada", product: updated });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async desactivarOferta(req, res, next) {
-    const { pid } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(pid)) {
-      return res.status(400).json({ message: "ID inválido" });
-    }
-    try {
-      const updated = await ProductService.desactivarOferta(pid);
-      return res
-        .status(200)
-        .json({ message: "Oferta desactivada", product: updated });
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async limpiarOfertasVencidas(req, res, next) {
-    try {
-      const count = await ProductService.limpiarOfertasVencidas();
-      return res
-        .status(200)
-        .json({ message: `${count} ofertas vencidas limpiadas` });
     } catch (error) {
       next(error);
     }

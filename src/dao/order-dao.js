@@ -38,10 +38,6 @@ class OrderDAO {
       .populate("products.product", "item sku imagen");
   }
 
-  async getOrderByUser(userId) {
-    return await OrderModel.find({ user: userId }).sort({ date: -1 });
-  }
-
   async updateOrder(id, data) {
     return await OrderModel.findByIdAndUpdate(id, data, {
       new: true,
@@ -51,10 +47,6 @@ class OrderDAO {
 
   async deleteOrder(id) {
     return await OrderModel.findByIdAndDelete(id);
-  }
-
-  async getOrderByStatus(status) {
-    return await OrderModel.find({ status }).sort({ date: -1 });
   }
 
   async updateOrderStatus(id, status) {

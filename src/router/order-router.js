@@ -10,8 +10,6 @@ const adminOnly = authMiddleware(["admin"]);
 
 // ─── Admin ───────────────────────────────
 router.get("/stats", adminOnly, OrderController.getSalesStats);
-router.get("/status/:status", adminOnly, OrderController.getOrderByStatus);
-router.get("/user/:userId", adminOnly, OrderController.getOrderByUser);
 router.get("/admin", adminOnly, OrderController.getOrdersPaginated);
 
 // ─── Usuario logueado ────────────────────

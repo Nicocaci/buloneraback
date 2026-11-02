@@ -5,6 +5,29 @@ import { isValidObjectId } from "../utils/validators.js";
 
 const ESTADOS_DE_PAGO_ABIERTO = ["pendiente_pago", "rechazado"];
 
+// Campos que el admin puede cambiar con PUT /api/orders/:id ("Marcar como revisada").
+// El estado se cambia con PUT /:id/status; el resto (total, productos, pago, stock) no se
+// toca a mano. Cada campo indica qué valor acepta.
+const CAMPOS_EDITABLES = {
+  necesitaAtencion: (v) => typeof v === "boolean",
+  "enviopack.necesitaAtencion": (v) => typeof v === "boolean",
+};
+
+// Devuelve los cambios válidos, o null si el body está vacío, trae un campo no permitido
+// o un valor inválido (en ese caso no se guarda nada).
+const camposEditables = (body) => {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const claves = Object.keys(body);
+  if (claves.length === 0) return null;
+  const cambios = {};
+  for (const clave of claves) {
+    const valido = CAMPOS_EDITABLES[clave];
+    if (!Object.hasOwn(CAMPOS_EDITABLES, clave) || !valido(body[clave])) return null;
+    cambios[clave] = body[clave];
+  }
+  return cambios;
+};
+
 class OrderController {
   // Órdenes del usuario logueado
   async getMyOrders(req, res, next) {
@@ -70,37 +93,19 @@ class OrderController {
     }
   }
 
-  async getOrderByStatus(req, res, next) {
-    try {
-      const order = await OrderService.getOrderByStatus(req.params.status);
-      res.status(200).json(order);
-    } catch (error) {
-      next(error);
-    }
-  }
-
-  async getOrderByUser(req, res, next) {
-    try {
-      if (!isValidObjectId(req.params.userId)) {
-        return res.status(400).json({ message: "ID inválido" });
-      }
-      const order = await OrderService.getOrderByUser(req.params.userId);
-      res.status(200).json(order);
-    } catch (error) {
-      next(error);
-    }
-  }
-
   async updateOrder(req, res, next) {
     try {
       if (!isValidObjectId(req.params.id)) {
         return res.status(400).json({ message: "ID inválido" });
       }
-      const data = { ...req.body };
-      delete data._id;
-      delete data.orderNumber;
+      const cambios = camposEditables(req.body);
+      if (!cambios) {
+        return res.status(400).json({
+          message: `Solo se pueden modificar: ${Object.keys(CAMPOS_EDITABLES).join(", ")}`,
+        });
+      }
 
-      const order = await OrderService.updateOrder(req.params.id, data);
+      const order = await OrderService.updateOrder(req.params.id, { $set: cambios });
       if (!order) {
         return res.status(404).json({ message: "Orden no encontrada" });
       }

@@ -35,50 +35,12 @@ class ProductService {
     return await ProductRepository.getProductById(pid);
   }
 
-  async getProductBySku(sku) {
-    return await ProductRepository.getProductBySku(sku);
-  }
-
   async updateProduct(pid, data) {
     return conInvalidacion(() => ProductRepository.updateProduct(pid, data));
   }
 
   async deleteProduct(pid) {
     return conInvalidacion(() => ProductRepository.deleteProduct(pid));
-  }
-
-  // ─────────────────────────────────────────
-  // Categorías y subcategorías
-  // ─────────────────────────────────────────
-
-  async getDistinctCategories() {
-    return await ProductRepository.getDistinctCategories();
-  }
-  async getDistinctSubcategoriesByCategory(categoria) {
-    return await ProductRepository.getDistinctSubcategoriesByCategory(
-      categoria,
-    );
-  }
-
-  // ─────────────────────────────────────────
-  // Ofertas
-  // ─────────────────────────────────────────
-
-  async getSales(limit) {
-    return await ProductRepository.getSales(limit);
-  }
-
-  async activarOferta(pid, descuento, vence = null) {
-    return conInvalidacion(() => ProductRepository.activarOferta(pid, descuento, vence));
-  }
-
-  async desactivarOferta(pid) {
-    return conInvalidacion(() => ProductRepository.desactivarOferta(pid));
-  }
-
-  async limpiarOfertasVencidas() {
-    return conInvalidacion(() => ProductRepository.limpiarOfertasVencidas());
-  }
-}
+  }}
 
 export default new ProductService();

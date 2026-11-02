@@ -164,13 +164,6 @@ class ProductDao {
     return product ? this._addVirtuals(product) : null;
   }
 
-  async getProductBySku(sku) {
-    const product = await ProductModel.findOne({
-      sku: { $regex: `^${escapeRegex(sku)}$`, $options: "i" },
-    }).lean();
-    return product ? this._addVirtuals(product) : null;
-  }
-
   async updateProduct(pid, data) {
     const updated = await ProductModel.findByIdAndUpdate(pid, data, {
       new: true,
@@ -184,120 +177,6 @@ class ProductDao {
     const deleted = await ProductModel.findByIdAndDelete(pid);
     if (!deleted) throw new AppError(404, "Producto no encontrado");
     return deleted;
-  }
-
-  // ─────────────────────────────────────────
-  // Categorías y subcategorías
-  // ─────────────────────────────────────────
-
-  async getDistinctCategories() {
-    const result = await ProductModel.aggregate([
-      // Solo productos visibles: una categoría sin productos activos no aparece en el menú
-      { $match: { estado: "activo", categoria: { $exists: true, $nin: [null, ""] } } },
-      {
-        $group: {
-          _id: { $toLower: { $trim: { input: "$categoria" } } },
-          label: { $first: { $trim: { input: "$categoria" } } },
-        },
-      },
-      { $sort: { label: 1 } },
-    ]);
-    return result.map((r) => r.label);
-  }
-
-  async getDistinctSubcategoriesByCategory(categoria) {
-    const lista = await ProductModel.distinct("subcategoria", { categoria, estado: "activo" });
-    return lista.filter(Boolean);
-  }
-
-  // ─────────────────────────────────────────
-  // Ofertas
-  // ─────────────────────────────────────────
-
-  /**
-   * Devuelve productos con oferta activa y vigente.
-   */
-  async getSales(limit = 10) {
-    const now = new Date();
-    const rawProducts = await ProductModel.find({
-      estado: "activo",
-      "oferta.activa": true,
-      "oferta.descuento": { $gt: 0 },
-      $or: [{ "oferta.vence": null }, { "oferta.vence": { $gt: now } }],
-    })
-      .sort({ "oferta.descuento": -1 }) // mayor descuento primero
-      .limit(limit)
-      .lean();
-
-    return rawProducts.map((p) => this._addVirtuals(p));
-  }
-
-  /**
-   * Activa o actualiza la oferta de un producto.
-   * @param {string} pid - ID del producto
-   * @param {number} descuento - Porcentaje de descuento (0-100)
-   * @param {Date|null} vence - Fecha de vencimiento (opcional)
-   */
-  async activarOferta(pid, descuento, vence = null) {
-    if (!Number.isFinite(descuento) || descuento < 0 || descuento > 100) {
-      throw new AppError(400, "El descuento debe estar entre 0 y 100");
-    }
-
-    const updated = await ProductModel.findByIdAndUpdate(
-      pid,
-      {
-        $set: {
-          "oferta.activa": true,
-          "oferta.descuento": descuento,
-          "oferta.vence": vence ? new Date(vence) : null,
-        },
-      },
-      { new: true, runValidators: true },
-    ).lean();
-
-    if (!updated) throw new AppError(404, "Producto no encontrado");
-    return this._addVirtuals(updated);
-  }
-
-  /**
-   * Desactiva la oferta de un producto y resetea sus valores.
-   */
-  async desactivarOferta(pid) {
-    const updated = await ProductModel.findByIdAndUpdate(
-      pid,
-      {
-        $set: {
-          "oferta.activa": false,
-          "oferta.descuento": 0,
-          "oferta.vence": null,
-        },
-      },
-      { new: true },
-    ).lean();
-
-    if (!updated) throw new AppError(404, "Producto no encontrado");
-    return this._addVirtuals(updated);
-  }
-
-  /**
-   * Limpia las ofertas vencidas. Retorna la cantidad de productos actualizados.
-   */
-  async limpiarOfertasVencidas() {
-    const result = await ProductModel.updateMany(
-      {
-        "oferta.activa": true,
-        "oferta.vence": { $lte: new Date() },
-      },
-      {
-        $set: {
-          "oferta.activa": false,
-          "oferta.descuento": 0,
-          "oferta.vence": null,
-        },
-      },
-    );
-    return result.modifiedCount;
-  }
-}
+  }}
 
 export default new ProductDao();

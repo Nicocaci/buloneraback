@@ -24,12 +24,6 @@ class OrderService {
   async getOrderById(id) {
     return await OrderRepository.getOrderById(id);
   }
-  async getOrderByStatus(status) {
-    return await OrderRepository.getOrderByStatus(status);
-  }
-  async getOrderByUser(userId) {
-    return await OrderRepository.getOrderByUser(userId);
-  }
   async updateOrder(id, data) {
     return await OrderRepository.updateOrder(id, data);
   }

@@ -17,49 +17,12 @@ class ProductRepository {
     return await ProductDao.getProductById(pid);
   }
 
-  async getProductBySku(sku) {
-    return await ProductDao.getProductBySku(sku);
-  }
-
   async updateProduct(pid, data) {
     return await ProductDao.updateProduct(pid, data);
   }
 
   async deleteProduct(pid) {
     return await ProductDao.deleteProduct(pid);
-  }
-
-  // ─────────────────────────────────────────
-  // Categorías y subcategorías
-  // ─────────────────────────────────────────
-
-  async getDistinctCategories() {
-    return await ProductDao.getDistinctCategories();
-  }
-
-  async getDistinctSubcategoriesByCategory(categoria) {
-    return await ProductDao.getDistinctSubcategoriesByCategory(categoria);
-  }
-
-  // ─────────────────────────────────────────
-  // Ofertas
-  // ─────────────────────────────────────────
-
-  async getSales(limit) {
-    return await ProductDao.getSales(limit);
-  }
-
-  async activarOferta(pid, descuento, vence = null) {
-    return await ProductDao.activarOferta(pid, descuento, vence);
-  }
-
-  async desactivarOferta(pid) {
-    return await ProductDao.desactivarOferta(pid);
-  }
-
-  async limpiarOfertasVencidas() {
-    return await ProductDao.limpiarOfertasVencidas();
-  }
-}
+  }}
 
 export default new ProductRepository();

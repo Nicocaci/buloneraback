@@ -13,21 +13,8 @@ const adminOnly = authMiddleware(["admin"]);
 // Públicas
 // ─────────────────────────────────────────
 
-// Categorías y subcategorías
-router.get("/categorias", ProductController.getCategories);
-router.get(
-  "/subcategorias/:category",
-  ProductController.getSubcategoriesByCategory,
-);
-
 // Cantidades para el filtro (categorías, subcategorías, marcas)
 router.get("/facetas", ProductController.getFacetas);
-
-// Buscar por SKU
-router.get("/sku/:sku", ProductController.getProductBySku);
-
-// Productos en oferta vigente
-router.get("/ofertas", ProductController.getSales);
 
 // Obtener productos (con todos los filtros + ?soloOfertas=true)
 router.get("/", ProductController.getProducts);
@@ -35,9 +22,6 @@ router.get("/", ProductController.getProducts);
 // ─────────────────────────────────────────
 // Solo admin
 // ─────────────────────────────────────────
-
-// Limpiar ofertas vencidas
-router.post("/ofertas/limpiar", adminOnly, ProductController.limpiarOfertasVencidas);
 
 // Crear producto
 router.post(
@@ -64,9 +48,5 @@ router.put(
 
 // Eliminar producto
 router.delete("/:pid", adminOnly, ProductController.deleteProduct);
-
-// Activar / desactivar oferta de un producto
-router.patch("/:pid/oferta/activar", adminOnly, ProductController.activarOferta);
-router.patch("/:pid/oferta/desactivar", adminOnly, ProductController.desactivarOferta);
 
 export default router;

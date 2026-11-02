@@ -10,12 +10,6 @@ class OrderRepository {
   async getOrderById(id) {
     return await OrderDAO.getOrderById(id);
   }
-  async getOrderByStatus(status) {
-    return await OrderDAO.getOrderByStatus(status);
-  }
-  async getOrderByUser(userId) {
-    return await OrderDAO.getOrderByUser(userId);
-  }
   async updateOrder(id, data) {
     return await OrderDAO.updateOrder(id, data);
   }
