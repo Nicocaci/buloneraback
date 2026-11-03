@@ -23,7 +23,9 @@ class ProductService {
 
   async getProducts(filters) {
     if (!filters.search) return await ProductRepository.getProducts(filters);
-    const idsBusqueda = await buscarIdsProductos(filters.search);
+    // El panel admin (estado "todos" o "inactivo") también busca entre los inactivos
+    const incluirInactivos = Boolean(filters.estado && filters.estado !== "activo");
+    const idsBusqueda = await buscarIdsProductos(filters.search, { incluirInactivos });
     return await ProductRepository.getProducts({ ...filters, idsBusqueda });
   }
 

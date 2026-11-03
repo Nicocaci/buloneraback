@@ -1,6 +1,7 @@
 // Búsqueda de productos en memoria.
-// La tienda tiene pocos productos (~150): se guarda una copia liviana de los productos
-// activos y se busca sobre ella. Ignora mayúsculas y acentos, acepta partes de palabras
+// La tienda tiene pocos productos (~150): se guarda una copia liviana de todos los productos
+// (activos e inactivos) y se busca sobre ella. La tienda solo ve los activos; el panel
+// admin puede buscar también entre los inactivos. Ignora mayúsculas y acentos, acepta partes de palabras
 // ("amol" → amoladora), tolera errores de tipeo ("amoladra") y ordena por relevancia.
 // La copia se renueva cada 60 segundos o al instante cuando el admin cambia un producto.
 import ProductModel, { isOfertaVigente } from "../dao/models/product-model.js";
@@ -100,8 +101,8 @@ function puntajeTermino(termino, producto) {
 
 async function cargarIndice() {
   const docs = await ProductModel.find(
-    { estado: "activo" },
-    { item: 1, marca: 1, categoria: 1, subcategoria: 1, sku: 1, stock: 1, oferta: 1 },
+    {},
+    { item: 1, marca: 1, categoria: 1, subcategoria: 1, sku: 1, stock: 1, oferta: 1, estado: 1 },
   ).lean();
 
   const productos = docs.map((d) => ({
@@ -112,6 +113,7 @@ async function cargarIndice() {
     subcategoria: d.subcategoria,
     stock: d.stock,
     oferta: d.oferta,
+    estado: d.estado,
     skuNorm: comoSku(d.sku),
     palabras: Object.fromEntries(CAMPOS.map(([c]) => [c, palabras(d[c])])),
   }));
@@ -133,6 +135,8 @@ export async function obtenerIndice() {
   return (await cargando).productos;
 }
 
+const esActivo = (producto) => producto.estado === "activo";
+
 // El admin creó, editó o borró un producto: la próxima consulta recarga la copia
 export function invalidarIndiceBusqueda() {
   indice = null;
@@ -141,8 +145,9 @@ export function invalidarIndiceBusqueda() {
 /**
  * Devuelve los _id (como string) de los productos que coinciden, del más al menos relevante.
  * Cada palabra buscada tiene que coincidir con algún campo (búsqueda "y").
+ * Por defecto solo busca entre los activos (tienda); el panel admin pasa incluirInactivos.
  */
-export async function buscarIdsProductos(texto) {
+export async function buscarIdsProductos(texto, { incluirInactivos = false } = {}) {
   const terminos = palabras(texto).slice(0, MAX_TERMINOS);
   if (!terminos.length) return [];
 
@@ -150,6 +155,7 @@ export async function buscarIdsProductos(texto) {
   const consultaSku = comoSku(texto);
   const resultados = [];
   for (const producto of productos) {
+    if (!incluirInactivos && !esActivo(producto)) continue;
     // El SKU completo (o su comienzo) gana aunque tenga guiones o espacios
     if (pareceSku(consultaSku) && producto.skuNorm.startsWith(consultaSku)) {
       const total = producto.skuNorm === consultaSku ? 1000 : 500;
@@ -178,7 +184,8 @@ export async function buscarIdsProductos(texto) {
  * (así se ven las otras opciones disponibles y cuántos productos tiene cada una).
  */
 export async function calcularFacetas({ categoria, subcategoria, marca, soloOfertas, search } = {}) {
-  let productos = await obtenerIndice();
+  // Las facetas son de la tienda: solo cuentan productos activos
+  let productos = (await obtenerIndice()).filter(esActivo);
   if (search) {
     const ids = new Set(await buscarIdsProductos(search));
     productos = productos.filter((p) => ids.has(String(p._id)));

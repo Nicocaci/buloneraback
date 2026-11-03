@@ -23,6 +23,9 @@ router.get("/", ProductController.getProducts);
 // Solo admin
 // ─────────────────────────────────────────
 
+// Listado del panel admin (activos e inactivos). Va antes de "/:pid".
+router.get("/admin", adminOnly, ProductController.getProductsAdmin);
+
 // Crear producto
 router.post(
   "/",

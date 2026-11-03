@@ -58,10 +58,11 @@ class ProductDao {
       soloOfertas = false, // filtrar solo productos en oferta vigente
       vista, // "resumen": para tarjetas y buscador, sin la descripción (texto largo)
       idsBusqueda, // resultado de la búsqueda (product-search.js), del más relevante al menos
+      estado = "activo", // "activo" (tienda), "inactivo" o "todos" (solo panel admin)
     } = filters;
 
     const skip = (page - 1) * limit;
-    const query = { estado: "activo" };
+    const query = estado === "todos" ? {} : { estado };
     query.$and = [];
 
     // 🔍 BÚSQUEDA: si viene resuelta por product-search.js se filtra por esos IDs

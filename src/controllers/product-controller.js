@@ -5,6 +5,7 @@ import streamifier from "streamifier";
 import { queryString } from "../utils/validators.js";
 
 const MAX_LIMIT = 48;
+const ESTADOS_ADMIN = ["todos", "activo", "inactivo"];
 
 const toPage = (value) => Math.max(parseInt(value, 10) || 1, 1);
 const toLimit = (value, fallback) =>
@@ -217,6 +218,23 @@ class ProductController {
         vista: req.query.vista === "resumen" ? "resumen" : undefined,
       });
 
+      return res.status(200).json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Listado del panel admin: incluye los productos inactivos (la tienda solo ve los activos).
+  // ?estado=todos|activo|inactivo (por defecto "todos").
+  async getProductsAdmin(req, res, next) {
+    try {
+      const estado = ESTADOS_ADMIN.includes(req.query.estado) ? req.query.estado : "todos";
+      const result = await ProductService.getProducts({
+        page: toPage(req.query.page),
+        limit: toLimit(req.query.limit, 8),
+        search: queryString(req.query.search),
+        estado,
+      });
       return res.status(200).json(result);
     } catch (error) {
       next(error);
