@@ -15,7 +15,8 @@ const items = [
   },
 ];
 
-const shippingCost = 5000;
+// El envío a domicilio se coordina por WhatsApp: no se cobra en Mercado Pago
+const shippingCost = 0;
 
 const productsTotal = items.reduce(
   (acc, i) => acc + i.product.precioConIva * i.quantity,
@@ -23,8 +24,19 @@ const productsTotal = items.reduce(
 );
 const total = productsTotal + shippingCost;
 
-const shippingMethod = "A domicilio — Correo Argentino (Expreso)";
-const shippingAddress = "Av. Corrientes 1234, Rosario, Santa Fe (CP 2000)";
+const shippingMethod = "Envío a domicilio (a coordinar)";
+const entrega = {
+  tipo: "envio",
+  direccion: {
+    calle: "Av. Corrientes",
+    numero: "1234",
+    pisoDepto: "3° B",
+    ciudad: "Rosario",
+    provincia: "Santa Fe",
+    codigoPostal: "2000",
+    notas: "Tocar timbre 3B",
+  },
+};
 
 async function run() {
   // 1️⃣ Mail al comprador
@@ -37,7 +49,7 @@ async function run() {
       shippingCost,
       customerName: "Juan Pérez",
       shippingMethod,
-      shippingAddress,
+      entrega,
     });
     console.log("✅ Mail al comprador enviado, revisá tu bandeja");
   } catch (err) {
@@ -54,8 +66,8 @@ async function run() {
       customerName: "Juan Pérez",
       customerEmail: "juan.perez@example.com",
       customerPhone: "+54 341 555-1234",
-      shippingAddress,
       shippingMethod,
+      entrega,
       paymentMethod: "Mercado Pago",
     });
     console.log(

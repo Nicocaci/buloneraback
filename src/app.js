@@ -13,8 +13,6 @@ import productRouter from "./router/product-router.js";
 import orderRouter from "./router/order-router.js";
 import mercadoPagoRouter from "./router/mp-router.js";
 import sendEmailRouter from "./router/email-router.js";
-import shippingRouter from "./router/shipping.router.js";
-import shippingWebhookRouter from "./router/shipping-webhook-router.js";
 import errorHandler, { notFoundHandler } from "./middlewares/error-handler.js";
 
 const app = express();
@@ -75,8 +73,6 @@ app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/mp", mercadoPagoRouter);
 app.use("/api/email", sendEmailRouter);
-app.use("/api/shipping", shippingRouter);
-app.use("/webhooks", shippingWebhookRouter); // fuera de /api
 
 app.use("/api", notFoundHandler);
 app.use(errorHandler);

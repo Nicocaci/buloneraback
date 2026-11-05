@@ -11,7 +11,7 @@ import {
   sendStoreNotificationEmail,
   sendStoreAlertEmail,
 } from "../order-email-service.js";
-import { createEnviopackShipment } from "../enviopack/order-shipping-service.js";
+import { nombreProvincia } from "../../utils/provincias.js";
 
 const TOLERANCIA_MONTO = 0.5; // pesos
 
@@ -20,7 +20,6 @@ const ESTADOS_RECHAZADOS = ["rejected", "cancelled"];
 const ESTADOS_REEMBOLSO = ["refunded", "charged_back"];
 
 const aceptaPagosDePrueba = () => process.env.MP_ACCEPT_TEST_PAYMENTS === "true";
-const crearEnviosHabilitado = () => process.env.ENVIOPACK_CREAR_ENVIOS !== "false";
 
 // Estado y fecha del pago para los logs: permite distinguir un pago viejo (anterior a la
 // Fase 1B, cuando external_reference era el carrito) de uno nuevo que no encontró su orden.
@@ -122,13 +121,13 @@ async function procesarAprobado(order, payment) {
     avisarTienda(actualizada.orderNumber, actualizada.motivoAtencion);
   }
 
-  await ejecutarPostPago(actualizada, payment, { crearEnvio: resultado === "confirmada" });
+  await ejecutarPostPago(actualizada, payment);
   return { procesado: true };
 }
 
-// Tareas posteriores a un pago aprobado. Si alguna falla, la orden queda marcada para revisión,
-// pero el pago ya quedó registrado.
-async function ejecutarPostPago(order, payment, { crearEnvio }) {
+// Tareas posteriores a un pago aprobado: limpiar el carrito y mandar los mails.
+// Si alguna falla, se registra en el log; el pago ya quedó registrado.
+async function ejecutarPostPago(order, payment) {
   // 1. Sacar del carrito los productos comprados
   if (order.user) {
     await CartModel.updateOne(
@@ -148,16 +147,26 @@ async function ejecutarPostPago(order, payment, { crearEnvio }) {
   }));
 
   const esRetiro = order.envio?.metodo === "retiro_local";
-  const opcion = order.envio?.opcion || {};
   const direccion = order.shippingAddress || {};
 
   const shippingMethodLabel = esRetiro
-    ? "Retiro local"
-    : `${opcion.tipo === "sucursal" ? "A sucursal" : "A domicilio"} — ${opcion.correo || ""} (${opcion.servicio || ""})`;
+    ? "Retiro en el local"
+    : "Envío a domicilio (a coordinar)";
 
-  const shippingAddressLabel = esRetiro
-    ? undefined
-    : `${direccion.calle} ${direccion.numero}, ${direccion.ciudad}, ${direccion.provincia} (CP ${direccion.codigoPostal})`;
+  const entrega = esRetiro
+    ? { tipo: "retiro_local" }
+    : {
+        tipo: "envio",
+        direccion: {
+          calle: direccion.calle,
+          numero: direccion.numero,
+          pisoDepto: direccion.pisoDepto,
+          ciudad: direccion.ciudad,
+          provincia: nombreProvincia(direccion.provincia),
+          codigoPostal: direccion.codigoPostal,
+          notas: direccion.notas,
+        },
+      };
 
   if (email) {
     sendOrderConfirmationEmail({
@@ -168,7 +177,7 @@ async function ejecutarPostPago(order, payment, { crearEnvio }) {
       shippingCost: order.shippingCost,
       customerName: comprador.nombre,
       shippingMethod: shippingMethodLabel,
-      shippingAddress: shippingAddressLabel,
+      entrega,
     }).catch((err) =>
       console.error(`Error enviando email al comprador (orden #${order.orderNumber}):`, err.message),
     );
@@ -182,47 +191,10 @@ async function ejecutarPostPago(order, payment, { crearEnvio }) {
     customerName: nombreCompleto,
     customerEmail: email,
     customerPhone: comprador.telefono || "",
-    shippingAddress: shippingAddressLabel,
     shippingMethod: shippingMethodLabel,
+    entrega,
     paymentMethod: "Mercado Pago",
   }).catch((err) =>
     console.error(`Error enviando aviso a la tienda (orden #${order.orderNumber}):`, err.message),
   );
-
-  // 3. Envío en Enviopack
-  if (esRetiro || !crearEnvio) return;
-
-  if (!crearEnviosHabilitado()) {
-    console.log(`ENVIOPACK_CREAR_ENVIOS=false: no se crea el envío de la orden #${order.orderNumber}`);
-    return;
-  }
-
-  try {
-    await createEnviopackShipment({
-      orderId: order._id,
-      nombre: comprador.nombre,
-      apellido: comprador.apellido,
-      email,
-      monto: order.total,
-      provincia: direccion.provincia,
-      localidad: direccion.ciudad,
-      calle: direccion.calle,
-      numero: direccion.numero,
-      codigo_postal: direccion.codigoPostal,
-      paquetes: order.envio.paquetes,
-      shippingChoice: opcion,
-    });
-  } catch (err) {
-    console.error(
-      `Error creando envío Enviopack (orden #${order.orderNumber}):`,
-      err.response?.status ?? "",
-      err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : err.message,
-    );
-    const motivo = "El pago se aprobó, pero no se pudo crear el envío en Enviopack. Crealo a mano.";
-    await OrderModel.updateOne(
-      { _id: order._id },
-      { $set: { necesitaAtencion: true, motivoAtencion: motivo } },
-    );
-    avisarTienda(order.orderNumber, motivo);
-  }
 }

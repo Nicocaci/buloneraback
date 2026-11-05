@@ -1,6 +1,9 @@
 // Arma una orden a partir de lo que manda el checkout, recalculando TODO en el servidor:
-// precios (con ofertas vigentes), stock y costo de envío. Del navegador solo se toman
-// los IDs de producto, las cantidades, los datos del comprador y la opción de envío elegida.
+// precios (con ofertas vigentes) y stock. Del navegador solo se toman los IDs de producto,
+// las cantidades, los datos del comprador y la dirección de entrega.
+//
+// Envío a domicilio: el costo NO se cobra en Mercado Pago. Se coordina por WhatsApp
+// después de la compra (la tienda le pasa al cliente el costo y un link de pago aparte).
 import mongoose from "mongoose";
 import ProductModel, { calcularPrecioFinal } from "../../dao/models/product-model.js";
 import CartModel from "../../dao/models/cart-model.js";
@@ -13,16 +16,15 @@ import {
   isValidPhone,
   isValidObjectId,
 } from "../../utils/validators.js";
-import { obtenerOpcionesEnvio, esMismaOpcion } from "../enviopack/quote-service.js";
+import { PROVINCIAS } from "../../utils/provincias.js";
 
 const MAX_ITEMS = 50;
 const MAX_CANTIDAD = 999;
 
-// Mismos valores que usa el frontend (utils/cartShipping.js) para cotizar.
-const PESO_DEFAULT_KG = 1;
-const PAQUETE_DEFAULT = "20x15x10";
+// Texto con el que se guarda y se muestra el método de envío a domicilio
+export const SERVICIO_ENVIO_A_COORDINAR = "A coordinar por WhatsApp";
 
-const PROVINCIAS_VALIDAS = new Set("CBKHUXWEPYLFMNQRAJDZSGVT".split(""));
+const PROVINCIAS_VALIDAS = new Set(Object.keys(PROVINCIAS));
 
 const redondear = (n) => Math.round(n * 100) / 100;
 
@@ -80,11 +82,11 @@ function validarEnvio(envio = {}) {
     metodo: "envio",
     calle: clean(envio.calle),
     numero: clean(envio.numero),
+    pisoDepto: clean(envio.pisoDepto),
     ciudad: clean(envio.ciudad),
     provincia: clean(envio.provincia),
     codigoPostal: clean(envio.codigoPostal),
     notas: clean(envio.notas),
-    opcion: envio.opcion,
   };
 
   if (
@@ -94,6 +96,9 @@ function validarEnvio(envio = {}) {
   ) {
     throw new AppError(400, "Completá la dirección de envío.");
   }
+  if (!isOptional(datos.pisoDepto, 40)) {
+    throw new AppError(400, "El piso o departamento es demasiado largo.");
+  }
   if (!PROVINCIAS_VALIDAS.has(datos.provincia)) {
     throw new AppError(400, "La provincia no es válida.");
   }
@@ -102,14 +107,6 @@ function validarEnvio(envio = {}) {
   }
   if (!isOptional(datos.notas, 500)) {
     throw new AppError(400, "Las notas de envío son demasiado largas.");
-  }
-  if (
-    !datos.opcion ||
-    typeof datos.opcion.correo !== "string" ||
-    typeof datos.opcion.servicio !== "string" ||
-    !["domicilio", "sucursal"].includes(datos.opcion.tipo)
-  ) {
-    throw new AppError(400, "Elegí una opción de envío.");
   }
   return datos;
 }
@@ -144,55 +141,8 @@ async function cargarProductos(cantidades) {
       nombre: producto.item,
       sku: producto.sku,
       precioUnitario: calcularPrecioFinal(producto.precio, producto.iva, producto.oferta),
-      pesoUnitario: producto.peso || PESO_DEFAULT_KG,
     };
   });
-}
-
-async function cotizarEnvio(envio, items) {
-  const peso = items.reduce((acc, i) => acc + i.pesoUnitario * i.quantity, 0);
-  const [alto, ancho, largo] = PAQUETE_DEFAULT.split("x").map(Number);
-
-  let opciones;
-  try {
-    opciones = await obtenerOpcionesEnvio({
-      provincia: envio.provincia,
-      codigo_postal: envio.codigoPostal,
-      peso,
-      paquetes: PAQUETE_DEFAULT,
-    });
-  } catch (err) {
-    console.error(
-      "Enviopack error (checkout):",
-      err.response?.status ?? "",
-      err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : err.message,
-    );
-    throw new AppError(
-      502,
-      "No pudimos cotizar el envío en este momento. Probá de nuevo en unos minutos o elegí retiro en el local.",
-    );
-  }
-
-  const elegida = opciones.find((o) => esMismaOpcion(o, envio.opcion));
-  if (!elegida) {
-    throw new AppError(
-      409,
-      "La opción de envío que elegiste ya no está disponible. Volvé al paso de envío y elegila de nuevo.",
-    );
-  }
-
-  return {
-    costo: redondear(Number(elegida.valor) || 0),
-    opcion: {
-      tipo: elegida.tipo,
-      correo: elegida.correo,
-      servicio: elegida.servicio,
-      despacho: elegida.despacho,
-      modalidad: elegida.modalidad,
-      horasEntrega: elegida.horas_entrega,
-    },
-    paquetes: [{ alto, ancho, largo, peso }],
-  };
 }
 
 // Devuelve los datos listos para OrderModel.create() con estado "pendiente_pago".
@@ -205,11 +155,6 @@ export async function prepararOrden({ body = {}, user }) {
   const subtotal = redondear(
     items.reduce((acc, i) => acc + i.precioUnitario * i.quantity, 0),
   );
-
-  let envioCotizado = { costo: 0, opcion: null, paquetes: [] };
-  if (envio.metodo === "envio") {
-    envioCotizado = await cotizarEnvio(envio, items);
-  }
 
   let cartId;
   if (user?.id && mongoose.isValidObjectId(user.id)) {
@@ -224,32 +169,26 @@ export async function prepararOrden({ body = {}, user }) {
     guestEmail: user?.id ? null : comprador.email,
     cart: cartId,
     comprador,
-    products: items.map(({ pesoUnitario, ...item }) => item),
+    products: items,
     subtotal,
-    shippingCost: envioCotizado.costo,
+    // El envío a domicilio se cobra aparte (se coordina por WhatsApp)
+    shippingCost: 0,
     shippingMethod: esRetiro
       ? { tipo: "retiro_local", correo: null, servicio: "Retiro en local" }
-      : {
-          tipo: envioCotizado.opcion.tipo,
-          correo: envioCotizado.opcion.correo,
-          servicio: envioCotizado.opcion.servicio,
-        },
-    envio: {
-      metodo: envio.metodo,
-      opcion: envioCotizado.opcion || undefined,
-      paquetes: envioCotizado.paquetes,
-    },
+      : { tipo: "domicilio", correo: null, servicio: SERVICIO_ENVIO_A_COORDINAR },
+    envio: { metodo: envio.metodo },
     shippingAddress: esRetiro
       ? undefined
       : {
           calle: envio.calle,
           numero: envio.numero,
+          pisoDepto: envio.pisoDepto,
           ciudad: envio.ciudad,
           provincia: envio.provincia,
           codigoPostal: envio.codigoPostal,
           notas: envio.notas,
         },
-    total: redondear(subtotal + envioCotizado.costo),
+    total: subtotal,
     status: "pendiente_pago",
     paymentMethod: "mercadopago",
   };
@@ -265,10 +204,12 @@ export function itemsParaMercadoPago(order) {
     currency_id: "ARS",
   }));
 
+  // Hoy el envío no se cobra en Mercado Pago (shippingCost = 0). Queda preparado para
+  // cuando se cargue un costo de envío en la orden (tarifas por zona).
   if (order.shippingCost > 0) {
     items.push({
       id: "envio",
-      title: `Envío - ${order.shippingMethod?.correo || ""} (${order.shippingMethod?.servicio || ""})`,
+      title: "Envío a domicilio",
       quantity: 1,
       unit_price: order.shippingCost,
       currency_id: "ARS",

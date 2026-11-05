@@ -14,6 +14,44 @@ const LOGO_URL = process.env.EMAIL_LOGO_URL;
 
 const STORE_URL = process.env.STORE_URL ?? "https://buloneraeltriangulo.com";
 
+// WhatsApp de la tienda (el mismo de bulonerafront/src/utils/contacto.js)
+const STORE_WHATSAPP = process.env.STORE_WHATSAPP || "5491151544062";
+
+const DIRECCION_LOCAL = "Camino General Belgrano 6444, Gutiérrez";
+
+const urlWhatsapp = (numero, mensaje) =>
+  `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+
+// Pasa un teléfono argentino escrito a mano al formato de WhatsApp (549 + área + número).
+// Si no se puede interpretar con seguridad, devuelve null y el mail muestra solo el número.
+export function telefonoParaWhatsapp(telefono = "") {
+  let d = String(telefono).replace(/\D/g, "");
+  if (d.startsWith("549") && d.length === 13) return d;
+  if (d.startsWith("54") && d.length === 12) return `549${d.slice(2)}`;
+  if (d.startsWith("0")) d = d.slice(1);
+  // 10 dígitos que empiezan con 15: falta el código de área, no se puede armar
+  if (d.length === 10 && !d.startsWith("15")) return `549${d}`;
+  return null;
+}
+
+// entrega: { tipo: "retiro_local" } | { tipo: "envio", direccion: { calle, numero, pisoDepto,
+// ciudad, provincia, codigoPostal, notas } } — la provincia ya viene con su nombre.
+const escaparEntrega = (entrega) => {
+  if (!entrega || entrega.tipo !== "envio") return entrega;
+  const direccion = Object.fromEntries(
+    Object.entries(entrega.direccion || {}).map(([k, v]) => [k, v ? escapeHtml(v) : ""]),
+  );
+  return { ...entrega, direccion };
+};
+
+// "Av. Siempre Viva 742, 3° B" — calle, número y piso/depto en una línea
+const lineaCalle = (d = {}) =>
+  `${d.calle || ""} ${d.numero || ""}`.trim() + (d.pisoDepto ? `, ${d.pisoDepto}` : "");
+
+const lineaLocalidad = (d = {}) =>
+  [d.ciudad, d.provincia].filter(Boolean).join(", ") +
+  (d.codigoPostal ? ` (CP ${d.codigoPostal})` : "");
+
 // Los datos que escribe el cliente (nombre, dirección) no pueden inyectar HTML en el mail.
 const escapeHtml = (value = "") =>
   String(value)
@@ -35,8 +73,8 @@ function buildOrderEmailHtml(datos) {
   return buildOrderEmailHtmlSeguro({
     ...datos,
     customerName: datos.customerName ? escapeHtml(datos.customerName) : datos.customerName,
-    shippingAddress: datos.shippingAddress ? escapeHtml(datos.shippingAddress) : datos.shippingAddress,
     shippingMethod: datos.shippingMethod ? escapeHtml(datos.shippingMethod) : datos.shippingMethod,
+    entrega: escaparEntrega(datos.entrega),
     items: escaparItems(datos.items),
   });
 }
@@ -54,9 +92,8 @@ function buildOrderEmailHtmlSeguro({
   shippingCost = 0,
   customerName,
   paymentMethod = "Mercado Pago",
-  shippingMethod = "Enviopack",
-  shippingAddress, // string opcional, ej: "Av. Rivadavia 4520, Caballito, CABA"
-  trackingUrl, // opcional, si ya tenés el link de Enviopack
+  shippingMethod = "-",
+  entrega,
   orderDate = new Date().toLocaleDateString("es-AR", {
     day: "2-digit",
     month: "short",
@@ -95,34 +132,55 @@ function buildOrderEmailHtmlSeguro({
     )
     .join("");
 
-  const trackingBlock = trackingUrl
-    ? `
-      <a href="${trackingUrl}" style="display:inline-block;background:#ffffff;color:${BRAND.black};font-size:13px;font-weight:700;padding:11px 24px;border-radius:6px;border:1.5px solid ${BRAND.black};text-decoration:none;">
-        Rastrear envío
-      </a>`
-    : "";
+  const esEnvio = entrega?.tipo === "envio";
+  const d = entrega?.direccion || {};
 
-  const shippingBlock = shippingAddress
+  const mensajeWhatsapp = esEnvio
+    ? `Hola! Mi pedido #${orderId} fue confirmado. Quiero coordinar el envío.`
+    : `Hola! Mi pedido #${orderId} fue confirmado.`;
+  const botonWhatsapp = `
+      <a href="${urlWhatsapp(STORE_WHATSAPP, mensajeWhatsapp)}" style="display:inline-block;background-color:${BRAND.red};color:#ffffff;font-size:14px;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none;">
+        ${esEnvio ? "Coordinar envío por WhatsApp" : "Consultar pedido por WhatsApp"}
+      </a>`;
+
+  // Próximo paso: cómo sigue la entrega
+  const entregaBlock = esEnvio
     ? `
     <tr>
-      <td style="padding:22px 32px 0 32px;">
-        <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">
-          Dirección de envío
-        </div>
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-          <tr>
-            <td valign="top">
-              <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
-                ${customerName ? `${customerName}<br>` : ""}${shippingAddress}
-              </p>
-            </td>
-            <td valign="top" align="right">${trackingBlock}</td>
-          </tr>
+      <td style="padding:26px 32px 0 32px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdecec;border-radius:8px;">
+          <tr><td style="padding:18px 20px;">
+            <div style="color:${BRAND.red};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px;">
+              Próximo paso: coordinamos el envío
+            </div>
+            <p style="color:${BRAND.black};font-size:14px;line-height:22px;margin:0;">
+              El total de este pedido no incluye el envío. Te pasamos el costo y el link de pago por WhatsApp.
+            </p>
+          </td></tr>
         </table>
       </td>
     </tr>
-    <tr><td style="padding:22px 32px 0 32px;"><div style="border-top:1px solid ${BRAND.border};">&nbsp;</div></td></tr>`
-    : "";
+    <tr>
+      <td style="padding:22px 32px 0 32px;">
+        <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">
+          Dirección de entrega
+        </div>
+        <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
+          ${customerName ? `${customerName}<br>` : ""}${lineaCalle(d)}<br>${lineaLocalidad(d)}${d.notas ? `<br><em>Notas: ${d.notas}</em>` : ""}
+        </p>
+      </td>
+    </tr>`
+    : `
+    <tr>
+      <td style="padding:26px 32px 0 32px;">
+        <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px;">
+          Retiro en el local
+        </div>
+        <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
+          ${DIRECCION_LOCAL}. Te avisamos por email cuando esté listo para retirar.
+        </p>
+      </td>
+    </tr>`;
 
   return `
   <div style="background-color:#f2f2f2;padding:24px 0;font-family:'Segoe UI',Arial,Helvetica,sans-serif;">
@@ -209,14 +267,17 @@ function buildOrderEmailHtmlSeguro({
             </table>
           </td></tr>
 
+          ${entregaBlock}
+
           <!-- CTA -->
-          <tr><td align="center" style="padding:26px 32px 8px 32px;">
-            <a href="${STORE_URL}/gracias" style="display:inline-block;background-color:${BRAND.red};color:#ffffff;font-size:14px;font-weight:700;padding:13px 28px;border-radius:6px;text-decoration:none;">
+          <tr><td align="center" style="padding:26px 32px 0 32px;">
+            ${botonWhatsapp}
+          </td></tr>
+          <tr><td align="center" style="padding:14px 32px 0 32px;">
+            <a href="${STORE_URL}" style="color:${BRAND.gray};font-size:13px;text-decoration:underline;">
               Volver a la tienda
             </a>
           </td></tr>
-
-          ${shippingBlock}
 
           <!-- FOOTER -->
           <tr><td style="padding:26px 32px;text-align:center;">
@@ -244,8 +305,7 @@ export async function sendOrderConfirmationEmail({
   customerName,
   paymentMethod,
   shippingMethod,
-  shippingAddress,
-  trackingUrl,
+  entrega,
 }) {
   await enviar({
     from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
@@ -259,8 +319,7 @@ export async function sendOrderConfirmationEmail({
       customerName,
       paymentMethod,
       shippingMethod,
-      shippingAddress,
-      trackingUrl,
+      entrega,
     }),
   });
 }
@@ -270,8 +329,9 @@ function buildStoreNotificationHtml(datos) {
     customerName: datos.customerName ? escapeHtml(datos.customerName) : datos.customerName,
     customerEmail: datos.customerEmail ? escapeHtml(datos.customerEmail) : datos.customerEmail,
     customerPhone: datos.customerPhone ? escapeHtml(datos.customerPhone) : datos.customerPhone,
-    shippingAddress: datos.shippingAddress ? escapeHtml(datos.shippingAddress) : datos.shippingAddress,
+    whatsappCliente: telefonoParaWhatsapp(datos.customerPhone),
     shippingMethod: datos.shippingMethod ? escapeHtml(datos.shippingMethod) : datos.shippingMethod,
+    entrega: escaparEntrega(datos.entrega),
     items: escaparItems(datos.items),
   });
 }
@@ -284,8 +344,9 @@ function buildStoreNotificationHtmlSeguro({
   customerName,
   customerEmail,
   customerPhone,
-  shippingAddress,
+  whatsappCliente,
   shippingMethod,
+  entrega,
   paymentMethod = "Mercado Pago",
   orderDate = new Date().toLocaleDateString("es-AR", {
     day: "2-digit",
@@ -324,6 +385,62 @@ function buildStoreNotificationHtmlSeguro({
     )
     .join("");
 
+  const esEnvio = entrega?.tipo === "envio";
+  const d = entrega?.direccion || {};
+
+  const fila = (etiqueta, valor) => `
+              <tr>
+                <td style="padding:7px 10px;border-bottom:1px solid ${BRAND.border};font-size:13px;color:#8a8a92;width:130px;vertical-align:top;">${etiqueta}</td>
+                <td style="padding:7px 10px;border-bottom:1px solid ${BRAND.border};font-size:14px;color:${BRAND.black};font-weight:600;">${valor || "-"}</td>
+              </tr>`;
+
+  const mensajeAlCliente = `Hola ${customerName || ""}! Te escribimos de Bulonera El Triángulo por tu pedido #${orderId}. Te pasamos el costo del envío:`;
+  const botonWhatsappCliente = whatsappCliente
+    ? `
+            <a href="${urlWhatsapp(whatsappCliente, mensajeAlCliente)}" style="display:inline-block;background-color:${BRAND.red};color:#ffffff;font-size:13px;font-weight:700;padding:11px 22px;border-radius:6px;text-decoration:none;margin-top:12px;">
+              Escribirle por WhatsApp
+            </a>`
+    : "";
+
+  const envioBlock = esEnvio
+    ? `
+          <tr><td style="padding:18px 24px 0 24px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdecec;border-radius:8px;">
+              <tr><td style="padding:14px 16px;">
+                <div style="color:${BRAND.red};font-size:12px;font-weight:700;text-transform:uppercase;">Envío a coordinar</div>
+                <p style="color:${BRAND.black};font-size:14px;line-height:21px;margin:4px 0 0 0;">
+                  El cliente pagó solo los productos. Pasale el costo del envío y el link de pago por WhatsApp.
+                </p>
+                ${botonWhatsappCliente}
+              </td></tr>
+            </table>
+          </td></tr>
+
+          <tr><td style="padding:18px 24px 0 24px;">
+            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
+              Datos para el envío
+            </div>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              ${fila("Destinatario", customerName)}
+              ${fila("Teléfono", customerPhone)}
+              ${fila("Calle y número", `${d.calle || ""} ${d.numero || ""}`.trim())}
+              ${fila("Piso / Depto", d.pisoDepto)}
+              ${fila("Localidad", d.ciudad)}
+              ${fila("Provincia", d.provincia)}
+              ${fila("Código postal", d.codigoPostal)}
+              ${fila("Notas", d.notas)}
+            </table>
+          </td></tr>`
+    : `
+          <tr><td style="padding:18px 24px 0 24px;">
+            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
+              Entrega
+            </div>
+            <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
+              ${shippingMethod || "Retiro en el local"}
+            </p>
+          </td></tr>`;
+
   return `
   <div style="font-family:'Segoe UI',Arial,Helvetica,sans-serif;padding:20px;background:#f2f2f2;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -345,15 +462,7 @@ function buildStoreNotificationHtmlSeguro({
             </p>
           </td></tr>
 
-          <tr><td style="padding:18px 24px 0 24px;">
-            <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
-              Envío
-            </div>
-            <p style="color:${BRAND.gray};font-size:14px;line-height:22px;margin:0;">
-              ${shippingMethod || "-"}<br>
-              ${shippingAddress || "Sin dirección"}
-            </p>
-          </td></tr>
+          ${envioBlock}
 
           <tr><td style="padding:18px 24px 0 24px;">
             <div style="color:${BRAND.black};font-size:13px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">
@@ -395,14 +504,15 @@ export async function sendStoreNotificationEmail({
   customerName,
   customerEmail,
   customerPhone,
-  shippingAddress,
   shippingMethod,
+  entrega,
   paymentMethod,
 }) {
+  const sufijo = entrega?.tipo === "envio" ? " — Envío a coordinar" : " — Retiro en el local";
   await enviar({
     from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",
     to: process.env.STORE_NOTIFICATION_EMAIL,
-    subject: `🛒 Nueva venta #${orderId} — ${customerName || "Cliente"}`,
+    subject: `🛒 Nueva venta #${orderId} — ${customerName || "Cliente"}${sufijo}`,
     html: buildStoreNotificationHtml({
       orderId,
       items,
@@ -411,15 +521,15 @@ export async function sendStoreNotificationEmail({
       customerName,
       customerEmail,
       customerPhone,
-      shippingAddress,
       shippingMethod,
+      entrega,
       paymentMethod,
     }),
   });
 }
 
 // Aviso interno cuando una orden necesita revisión manual
-// (monto distinto al de la orden, pago aprobado sin stock, reembolso, error al crear el envío).
+// (monto distinto al de la orden, pago aprobado sin stock, reembolso, reclamo).
 export async function sendStoreAlertEmail({ orderNumber, motivo }) {
   await enviar({
     from: "BULONERA EL TRIÁNGULO <pedidos@buloneraeltriangulo.com>",

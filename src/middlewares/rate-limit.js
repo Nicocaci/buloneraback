@@ -46,9 +46,3 @@ export const estadoPagoLimiter = crearLimite({
   limit: 60,
   message: "Demasiadas consultas seguidas. Probá de nuevo en unos minutos.",
 });
-
-export const shippingQuoteLimiter = crearLimite({
-  windowMs: 5 * MINUTO,
-  limit: 60,
-  message: "Demasiadas cotizaciones de envío seguidas. Probá en unos minutos.",
-});

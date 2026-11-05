@@ -71,7 +71,8 @@ class OrderController {
         return res.status(400).json({ message: "ID inválido" });
       }
 
-      let order = await OrderModel.findById(id).select("status orderNumber").lean();
+      const CAMPOS = "status orderNumber envio.metodo";
+      let order = await OrderModel.findById(id).select(CAMPOS).lean();
       if (!order) {
         return res.status(404).json({ message: "Orden no encontrada" });
       }
@@ -80,14 +81,19 @@ class OrderController {
       if (paymentId && ESTADOS_DE_PAGO_ABIERTO.includes(order.status)) {
         try {
           await procesarPago(paymentId, { orderIdEsperado: id });
-          order = await OrderModel.findById(id).select("status orderNumber").lean();
+          order = await OrderModel.findById(id).select(CAMPOS).lean();
         } catch (error) {
           // Si Mercado Pago no responde, se devuelve el estado actual; el webhook lo va a actualizar.
           console.error(`No se pudo consultar el pago ${paymentId}:`, error?.message);
         }
       }
 
-      res.status(200).json({ orderNumber: order.orderNumber, status: order.status });
+      // entrega: "envio" | "retiro_local" (la pantalla /gracias muestra el botón que corresponde)
+      res.status(200).json({
+        orderNumber: order.orderNumber,
+        status: order.status,
+        entrega: order.envio?.metodo || null,
+      });
     } catch (error) {
       next(error);
     }

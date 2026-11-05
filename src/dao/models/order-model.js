@@ -5,7 +5,7 @@ import CounterModel from "./Counter.js";
 // - pendiente_pago: se generó el pago en Mercado Pago y todavía no se aprobó
 // - rechazado:      Mercado Pago rechazó el pago (el cliente puede reintentar con la misma orden)
 // - pagado:         pago aprobado y stock descontado
-// - enviado / entregado / cancelado: los maneja el admin o el webhook de Enviopack
+// - enviado / entregado / cancelado: los maneja el admin desde el panel
 // - reembolsado:    el pago se devolvió o tuvo contracargo (se repone el stock)
 // - pendiente:      estado de órdenes viejas, se mantiene por compatibilidad
 export const ORDER_STATUSES = [
@@ -65,6 +65,8 @@ const orderSchema = new mongoose.Schema(
     necesitaAtencion: { type: Boolean, default: false },
     motivoAtencion: { type: String, default: null },
 
+    // Datos de Enviopack: solo los tienen las órdenes anteriores a la baja de Enviopack.
+    // Se conservan para no perder el historial.
     enviopack: {
       pedidoId: { type: Number },
       envioId: { type: Number },
@@ -96,7 +98,7 @@ const orderSchema = new mongoose.Schema(
       servicio: { type: String, default: null },
     },
 
-    // Datos que necesita Enviopack para generar el envío al aprobarse el pago
+    // Método de entrega. "opcion" y "paquetes" solo los tienen las órdenes de Enviopack.
     envio: {
       metodo: { type: String, enum: ["retiro_local", "envio", null], default: null },
       opcion: {
@@ -137,6 +139,7 @@ const orderSchema = new mongoose.Schema(
     shippingAddress: {
       calle: { type: String },
       numero: { type: String },
+      pisoDepto: { type: String, default: "" },
       ciudad: { type: String },
       provincia: { type: String },
       codigoPostal: { type: String },
@@ -152,7 +155,8 @@ const orderSchema = new mongoose.Schema(
 orderSchema.index({ date: -1 });
 // "Mis órdenes" de un usuario
 orderSchema.index({ user: 1, date: -1 });
-// Webhook de Enviopack: busca la orden por el ID del envío (solo las que tienen envío)
+// Índice de la época de Enviopack (búsqueda por ID de envío). Ya no se usa; se deja
+// para no tener que borrarlo a mano en la base.
 orderSchema.index(
   { "enviopack.envioId": 1 },
   { partialFilterExpression: { "enviopack.envioId": { $exists: true } } },
